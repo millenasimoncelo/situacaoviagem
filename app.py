@@ -51,26 +51,11 @@ def carregar_dados():
     df = pd.concat(dfs, ignore_index=True)
     return df
 
-# ------------------------------------------------------------------------------------
-# 📌 Classificação do tipo de dia
-# ------------------------------------------------------------------------------------
-
-def classificar_tipo_dia(data):
-    if data.weekday() <= 4:
-        return "Dia útil"
-    elif data.weekday() == 5:
-        return "Sábado"
-    elif data.weekday() == 6:
-        return "Domingo"
-    else:
-        return "Outro"
-
 # ====================================================================================
 # 📌 CARREGAR BASE E TRATAR COLUNAS
 # ====================================================================================
 
-PASTA_DADOS = "dados"
-df = carregar_dados(PASTA_DADOS)
+df = carregar_dados()
 
 # Renomeia colunas para nomes sem espaço
 df = df.rename(columns=lambda x: x.strip().replace(" ", "_"))
@@ -87,7 +72,20 @@ df["Horário_agendado"] = pd.to_datetime(df["Horário_agendado"])
 df["Data_Agendada"] = df["Horário_agendado"].dt.date
 df["Horário_realizado"] = pd.to_datetime(df["Horário_realizado"], errors="coerce")
 
-# Tipo de dia
+# ------------------------------------------------------------------------------------
+# 📌 Classificação do tipo de dia
+# ------------------------------------------------------------------------------------
+
+def classificar_tipo_dia(data):
+    if data.weekday() <= 4:
+        return "Dia útil"
+    elif data.weekday() == 5:
+        return "Sábado"
+    elif data.weekday() == 6:
+        return "Domingo"
+    else:
+        return "Outro"
+
 df["Tipo_Dia"] = pd.to_datetime(df["Data_Agendada"]).apply(classificar_tipo_dia)
 
 # ====================================================================================
@@ -192,7 +190,7 @@ limites = [3, 5, 10]
 
 for idx, LIM in enumerate(limites):
 
-    qtd_dia, pct_dia, pct_base_qtd_media, pct_media = calcula_adiantamento(df_tipo, df_dia, LIM)
+    qtd_dia, pct_dia, _, pct_media = calcula_adiantamento(df_tipo, df_dia, LIM)
     desvio = pct_dia - pct_media
 
     with colunas[idx]:
