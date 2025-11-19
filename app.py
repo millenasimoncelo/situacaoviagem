@@ -1,5 +1,5 @@
 # ====================================================================================
-# PAINEL DE CATEGORIZAÇÃO DE VIAGENS — versão Streamlit com UPLOAD DE ARQUIVOS
+# PAINEL DE CATEGORIZAÇÃO DE VIAGENS — versão Streamlit com UPLOAD + ABAS + RANKINGS
 # ====================================================================================
 
 import os
@@ -32,7 +32,7 @@ def carregar_dados_upload(arquivos):
         nome = arquivo.name.lower()
 
         if nome.endswith(".csv"):
-            # seu CSV real: separador ; e UTF-8 com BOM
+            # CSV real: separador ; e UTF-8 com BOM
             df_arq = pd.read_csv(
                 arquivo,
                 sep=";",
@@ -55,7 +55,6 @@ def carregar_dados_upload(arquivos):
 
     df_final = pd.concat(dfs, ignore_index=True)
     return df_final
-
 
 # ------------------------------------------------------------------------------------
 # 📂 UPLOAD DO ARQUIVO
@@ -83,7 +82,6 @@ df = df.rename(columns=lambda x: str(x).strip().replace(" ", "_"))
 # ------------------------------------------------------------------------------------
 
 def classificar_tipo_dia(ts):
-    # ts é um Timestamp (datetime64)
     if pd.isna(ts):
         return "Desconhecido"
     wd = ts.weekday()
@@ -98,8 +96,12 @@ def classificar_tipo_dia(ts):
 # 📌 TRATAMENTO DAS COLUNAS BÁSICAS
 # ====================================================================================
 
-colunas_necessarias = ["Horário_agendado", "Horário_realizado",
-                       "Situação_viagem", "Situação_categoria"]
+colunas_necessarias = [
+    "Horário_agendado",
+    "Horário_realizado",
+    "Situação_viagem",
+    "Situação_categoria",
+]
 
 for c in colunas_necessarias:
     if c not in df.columns:
@@ -140,7 +142,7 @@ df["Adianta_5"] = df["Adiantamento_min"] > 5
 df["Adianta_10"] = df["Adiantamento_min"] > 10
 
 # ====================================================================================
-# 🎚️ FILTROS
+# 🎚️ FILTROS (SIDEBAR)
 # ====================================================================================
 
 st.sidebar.header("Filtros")
@@ -184,7 +186,6 @@ if df_filtro.empty:
 # 📌 Preparação: Último dia e janela de 7 dias (robusto)
 # ====================================================================================
 
-# garante que Data_Agendada é datetime
 df_filtro["Data_Agendada"] = pd.to_datetime(df_filtro["Data_Agendada"], errors="coerce")
 
 if df_filtro["Data_Agendada"].notna().sum() == 0:
@@ -192,19 +193,17 @@ if df_filtro["Data_Agendada"].notna().sum() == 0:
     st.stop()
 
 ultimo_dia = df_filtro["Data_Agendada"].max()
-
 df_dia = df_filtro[df_filtro["Data_Agendada"] == ultimo_dia]
 
 JANELA_DIAS = 7
 limite_data = ultimo_dia - pd.Timedelta(days=JANELA_DIAS)
-
 df_janela = df_filtro[df_filtro["Data_Agendada"] >= limite_data]
 
 tipo_dia_ult = df_dia["Tipo_Dia"].iloc[0]
 df_tipo = df_janela[df_janela["Tipo_Dia"] == tipo_dia_ult]
 
 # ====================================================================================
-# 🔢 Função auxiliar
+# 🔢 Função auxiliar de adiantamento
 # ====================================================================================
 
 def calcula_adiantamento(df_base, df_dia, limite):
@@ -220,92 +219,253 @@ def calcula_adiantamento(df_base, df_dia, limite):
     return qtd_dia, pct_dia, qtd_media, pct_media
 
 # ====================================================================================
-# SEÇÃO 1 — VELOCÍMETROS
+# 🧩 ABAS PRINCIPAIS
 # ====================================================================================
 
-st.header(f"Adiantamento das Viagens — Último Dia vs Média ({JANELA_DIAS} dias)")
+tab_resumo, tab_sit_viagem, tab_sit_cat, tab_rankings = st.tabs(
+    ["Resumo (velocímetros)", "Situação da viagem", "Situação categoria", "Rankings por empresa"]
+)
 
-colunas = st.columns(3)
-limites = [3, 5, 10]
+# ====================================================================================
+# TAB 1 — RESUMO / VELOCÍMETROS
+# ====================================================================================
 
-for idx, LIM in enumerate(limites):
-    qtd_dia, pct_dia, qtd_media, pct_media = calcula_adiantamento(df_tipo, df_dia, LIM)
-    desvio = pct_dia - pct_media
+with tab_resumo:
+    st.header(f"Adiantamento das Viagens — Último Dia vs Média ({JANELA_DIAS} dias)")
+    colunas = st.columns(3)
+    limites = [3, 5, 10]
 
-    with colunas[idx]:
-        fig_gauge = go.Figure(
-            go.Indicator(
-                mode="gauge+number+delta",
-                value=pct_dia,
-                delta={
-                    "reference": pct_media,
-                    "valueformat": ".2f",
-                    "increasing.color": "green",
-                    "decreasing.color": "red",
-                },
-                number={"suffix": "%", "font": {"size": 40}},
-                gauge={
-                    "axis": {"range": [0, max(10, pct_dia * 3, pct_media * 3)], "tickwidth": 1},
-                    "bar": {"color": "#4CAF50"},
-                    "borderwidth": 2,
-                    "bgcolor": "white",
-                },
+    for idx, LIM in enumerate(limites):
+        qtd_dia, pct_dia, qtd_media, pct_media = calcula_adiantamento(df_tipo, df_dia, LIM)
+        desvio = pct_dia - pct_media
+
+        with colunas[idx]:
+            fig_gauge = go.Figure(
+                go.Indicator(
+                    mode="gauge+number+delta",
+                    value=pct_dia,
+                    delta={
+                        "reference": pct_media,
+                        "valueformat": ".2f",
+                        "increasing.color": "green",
+                        "decreasing.color": "red",
+                    },
+                    number={"suffix": "%", "font": {"size": 40}},
+                    gauge={
+                        "axis": {
+                            "range": [0, max(10, pct_dia * 3, pct_media * 3)],
+                            "tickwidth": 1,
+                        },
+                        "bar": {"color": "#4CAF50"},
+                        "borderwidth": 2,
+                        "bgcolor": "white",
+                    },
+                )
             )
+
+            fig_gauge.update_layout(
+                title=f"Adiantadas > {LIM} min",
+                height=320,
+                margin=dict(l=10, r=10, t=70, b=10),
+            )
+
+            st.plotly_chart(fig_gauge, use_container_width=True)
+
+            st.markdown(
+                f"""
+                <div style="text-align:center; font-size:16px; margin-top:-12px;">
+                Último dia: <b>{qtd_dia}</b> viagens ({pct_dia:.2f}%) • 
+                Média {tipo_dia_ult.lower()} (últimos {JANELA_DIAS} dias): <b>{pct_media:.2f}%</b> 
+                ({'+' if desvio>=0 else ''}{desvio:.2f} p.p.)
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+# ====================================================================================
+# TAB 2 — SITUAÇÃO DA VIAGEM
+# ====================================================================================
+
+with tab_sit_viagem:
+    st.header(f"Situação da Viagem — Último Dia vs Média ({JANELA_DIAS} dias)")
+
+    tab_ult = df_dia.groupby("Situação_viagem").size().reset_index(name="Qtd Último Dia")
+    tab_tipo = df_tipo.groupby("Situação_viagem").size().reset_index(name="Qtd Média TipoDia")
+
+    tabela_vg = tab_ult.merge(tab_tipo, on="Situação_viagem", how="outer").fillna(0)
+
+    tabela_vg["% Último Dia"] = (
+        tabela_vg["Qtd Último Dia"] / tabela_vg["Qtd Último Dia"].sum() * 100
+        if tabela_vg["Qtd Último Dia"].sum() > 0
+        else 0
+    )
+    tabela_vg["% Média TipoDia"] = (
+        tabela_vg["Qtd Média TipoDia"] / tabela_vg["Qtd Média TipoDia"].sum() * 100
+        if tabela_vg["Qtd Média TipoDia"].sum() > 0
+        else 0
+    )
+    tabela_vg["Desvio (p.p.)"] = tabela_vg["% Último Dia"] - tabela_vg["% Média TipoDia"]
+
+    col1, col2 = st.columns([2, 3])
+
+    with col1:
+        st.subheader("Tabela")
+        st.dataframe(tabela_vg, use_container_width=True)
+
+    with col2:
+        st.subheader("Gráfico (sem 'Viagem concluída')")
+        grafico_vg = tabela_vg[tabela_vg["Situação_viagem"] != "Viagem concluída"]
+        if not grafico_vg.empty:
+            fig_vg = px.bar(
+                grafico_vg,
+                x="Situação_viagem",
+                y=["% Média TipoDia", "% Último Dia"],
+                barmode="group",
+                labels={"value": "% das viagens", "Situação_viagem": "Situação"},
+                height=420,
+            )
+            fig_vg.update_layout(legend_title_text="")
+            st.plotly_chart(fig_vg, use_container_width=True)
+        else:
+            st.info("Não há dados para exibir no gráfico.")
+
+# ====================================================================================
+# TAB 3 — SITUAÇÃO CATEGORIA
+# ====================================================================================
+
+with tab_sit_cat:
+    st.header(f"Situação Categoria — Último Dia vs Média ({JANELA_DIAS} dias)")
+
+    tab_cat_ult = df_dia.groupby("Situação_categoria").size().reset_index(name="Qtd Último Dia")
+    tab_cat_tipo = df_tipo.groupby("Situação_categoria").size().reset_index(name="Qtd Média TipoDia")
+
+    tabela_cat = tab_cat_ult.merge(tab_cat_tipo, on="Situação_categoria", how="outer").fillna(0)
+
+    tabela_cat["% Último Dia"] = (
+        tabela_cat["Qtd Último Dia"] / tabela_cat["Qtd Último Dia"].sum() * 100
+        if tabela_cat["Qtd Último Dia"].sum() > 0
+        else 0
+    )
+    tabela_cat["% Média TipoDia"] = (
+        tabela_cat["Qtd Média TipoDia"] / tabela_cat["Qtd Média TipoDia"].sum() * 100
+        if tabela_cat["Qtd Média TipoDia"].sum() > 0
+        else 0
+    )
+    tabela_cat["Desvio (p.p.)"] = tabela_cat["% Último Dia"] - tabela_cat["% Média TipoDia"]
+
+    col1, col2 = st.columns([2, 3])
+
+    with col1:
+        st.subheader("Tabela")
+        st.dataframe(tabela_cat, use_container_width=True)
+
+    with col2:
+        st.subheader("Gráfico")
+        if not tabela_cat.empty:
+            fig_cat = px.bar(
+                tabela_cat,
+                x="Situação_categoria",
+                y=["% Média TipoDia", "% Último Dia"],
+                barmode="group",
+                labels={"value": "% das viagens", "Situação_categoria": "Categoria"},
+                height=420,
+            )
+            fig_cat.update_layout(legend_title_text="")
+            st.plotly_chart(fig_cat, use_container_width=True)
+        else:
+            st.info("Não há dados para exibir no gráfico.")
+
+# ====================================================================================
+# TAB 4 — RANKINGS POR EMPRESA
+# ====================================================================================
+
+with tab_rankings:
+    st.header("Rankings por empresa")
+
+    if "Empresa" not in df_filtro.columns:
+        st.warning("A coluna 'Empresa' não existe na base. Não é possível montar rankings.")
+    else:
+        # base de agregação por empresa
+        base_emp = df_filtro.copy()
+        base_emp["Cancelada_flag"] = base_emp["Situação_viagem"].eq("Viagem cancelada")
+
+        agg_emp = (
+            base_emp.groupby("Empresa")
+            .agg(
+                Total_viagens=("Adiantamento_min", "size"),
+                Adianta_3=("Adianta_3", "sum"),
+                Adianta_5=("Adianta_5", "sum"),
+                Adianta_10=("Adianta_10", "sum"),
+                Canceladas=("Cancelada_flag", "sum"),
+            )
+            .reset_index()
         )
 
-        fig_gauge.update_layout(
-            title=f"Adiantadas > {LIM} min",
-            height=320,
-            margin=dict(l=10, r=10, t=70, b=10)
-        )
+        # evita divisão por zero
+        agg_emp = agg_emp[agg_emp["Total_viagens"] > 0]
 
-        st.plotly_chart(fig_gauge, use_container_width=True)
+        agg_emp["%_Adianta_3"] = agg_emp["Adianta_3"] / agg_emp["Total_viagens"] * 100
+        agg_emp["%_Adianta_5"] = agg_emp["Adianta_5"] / agg_emp["Total_viagens"] * 100
+        agg_emp["%_Adianta_10"] = agg_emp["Adianta_10"] / agg_emp["Total_viagens"] * 100
+        agg_emp["%_Canceladas"] = agg_emp["Canceladas"] / agg_emp["Total_viagens"] * 100
 
-        st.markdown(
-            f"""
-            <div style="text-align:center; font-size:16px; margin-top:-12px;">
-            Último dia: <b>{qtd_dia}</b> viagens ({pct_dia:.2f}%) • 
-            Média {tipo_dia_ult.lower()} (últimos {JANELA_DIAS} dias): <b>{pct_media:.2f}%</b> 
-            ({'+' if desvio>=0 else ''}{desvio:.2f} p.p.)
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
+        # ---------------- Ranking 1: adiantamento >3, >5, >10 ----------------
+        st.subheader("Ranking 1 — Percentual de viagens adiantadas (>3, >5, >10 min)")
 
-# ====================================================================================
-# SEÇÃO 2 — SITUAÇÃO DA VIAGEM
-# ====================================================================================
+        c1, c2, c3 = st.columns(3)
 
-st.header(f"Situação da Viagem — Último Dia vs Média ({JANELA_DIAS} dias)")
+        with c1:
+            st.markdown("**> 3 minutos**")
+            r3 = agg_emp.sort_values("%_Adianta_3", ascending=False)[
+                ["Empresa", "%_Adianta_3", "Total_viagens"]
+            ]
+            r3["%_Adianta_3"] = r3["%_Adianta_3"].round(2)
+            st.dataframe(r3.head(10), use_container_width=True)
 
-tab_ult = df_dia.groupby("Situação_viagem").size().reset_index(name="Qtd Último Dia")
-tab_tipo = df_tipo.groupby("Situação_viagem").size().reset_index(name="Qtd Média TipoDia")
+        with c2:
+            st.markdown("**> 5 minutos**")
+            r5 = agg_emp.sort_values("%_Adianta_5", ascending=False)[
+                ["Empresa", "%_Adianta_5", "Total_viagens"]
+            ]
+            r5["%_Adianta_5"] = r5["%_Adianta_5"].round(2)
+            st.dataframe(r5.head(10), use_container_width=True)
 
-tabela_vg = tab_ult.merge(tab_tipo, on="Situação_viagem", how="outer").fillna(0)
+        with c3:
+            st.markdown("**> 10 minutos**")
+            r10 = agg_emp.sort_values("%_Adianta_10", ascending=False)[
+                ["Empresa", "%_Adianta_10", "Total_viagens"]
+            ]
+            r10["%_Adianta_10"] = r10["%_Adianta_10"].round(2)
+            st.dataframe(r10.head(10), use_container_width=True)
 
-tabela_vg["% Último Dia"] = tabela_vg["Qtd Último Dia"] / tabela_vg["Qtd Último Dia"].sum() * 100
-tabela_vg["% Média TipoDia"] = tabela_vg["Qtd Média TipoDia"] / tabela_vg["Qtd Média TipoDia"].sum() * 100
-tabela_vg["Desvio (p.p.)"] = tabela_vg["% Último Dia"] - tabela_vg["% Média TipoDia"]
+        st.markdown("---")
 
-st.subheader("Tabela — Situação da Viagem")
-st.dataframe(tabela_vg, use_container_width=True)
+        # ---------------- Ranking 2: percentual de viagens canceladas ----------------
+        st.subheader("Ranking 2 — Percentual de viagens canceladas")
 
-# ====================================================================================
-# SEÇÃO 3 — SITUAÇÃO CATEGORIA
-# ====================================================================================
+        r_cancel = agg_emp.sort_values("%_Canceladas", ascending=False)[
+            ["Empresa", "%_Canceladas", "Total_viagens"]
+        ]
+        r_cancel["%_Canceladas"] = r_cancel["%_Canceladas"].round(2)
+        st.dataframe(r_cancel.head(15), use_container_width=True)
 
-st.header(f"Situação Categoria — Último Dia vs Média ({JANELA_DIAS} dias)")
+        st.markdown("---")
 
-tab_cat_ult = df_dia.groupby("Situação_categoria").size().reset_index(name="Qtd Último Dia")
-tab_cat_tipo = df_tipo.groupby("Situação_categoria").size().reset_index(name="Qtd Média TipoDia")
+        # ---------------- Ranking 3: categorias específicas ----------------
+        st.subheader("Ranking 3 — Ocorrências por categorias especiais")
 
-tabela_cat = tab_cat_ult.merge(tab_cat_tipo, on="Situação_categoria", how="outer").fillna(0)
+        categorias_r3 = ["ACI", "AVL", "CII", "EXT", "IAC", "IEP", "MRI",
+                         "OK", "QUE", "SIS", "TRI", "VNR"]
 
-tabela_cat["% Último Dia"] = tabela_cat["Qtd Último Dia"] / tabela_cat["Qtd Último Dia"].sum() * 100
-tabela_cat["% Média TipoDia"] = tabela_cat["Qtd Média TipoDia"] / tabela_cat["Qtd Média TipoDia"].sum() * 100
-tabela_cat["Desvio (p.p.)"] = tabela_cat["% Último Dia"] - tabela_cat["% Média TipoDia"]
+        base_cat = df_filtro[df_filtro["Situação_categoria"].isin(categorias_r3)].copy()
 
-st.subheader("Tabela — Situação Categoria")
-st.dataframe(tabela_cat, use_container_width=True)
-
-
+        if base_cat.empty:
+            st.info("Não há registros nas categorias ACI, AVL, CII, EXT, IAC, IEP, MRI, OK, QUE, SIS, TRI, VNR.")
+        else:
+            rank_cat = (
+                base_cat.groupby("Empresa")
+                .size()
+                .reset_index(name="Qtd_ocorrências")
+                .sort_values("Qtd_ocorrências", ascending=False)
+            )
+            st.dataframe(rank_cat.head(15), use_container_width=True)
