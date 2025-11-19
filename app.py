@@ -30,34 +30,37 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ------------------------------------------------------------------------------------
-# 📌 Função para carregar arquivos Excel
+# 📌 UPLOAD DOS ARQUIVOS (FUNCIONA LOCAL E NA NUVEM)
 # ------------------------------------------------------------------------------------
 
+st.sidebar.header("Carregar dados")
+
+uploaded_files = st.sidebar.file_uploader(
+    "Envie seus arquivos .xlsx da categorização",
+    type=["xlsx"],
+    accept_multiple_files=True
+)
+
+if not uploaded_files:
+    st.warning("Envie pelo menos um arquivo .xlsx para iniciar o painel.")
+    st.stop()
+
+# Função que concatena todos os arquivos enviados
 @st.cache_data
-def carregar_dados():
-    pasta = r"C:\Users\Millena\Documents\Painel Categorização de Viagens\dados"
+def carregar_dados_upload(arquivos):
+    dfs = []
+    for arquivo in arquivos:
+        df = pd.read_excel(arquivo)
+        dfs.append(df)
+    df_final = pd.concat(dfs, ignore_index=True)
+    return df_final
 
-    arquivos = [
-        os.path.join(pasta, f)
-        for f in os.listdir(pasta)
-        if f.endswith(".xlsx") and not f.startswith("~$")
-    ]
+df = carregar_dados_upload(uploaded_files)
 
-    if len(arquivos) == 0:
-        st.error("Nenhum arquivo .xlsx encontrado na pasta de dados!")
-        st.stop()
+# ------------------------------------------------------------------------------------
+# 📌 TRATAMENTO DAS COLUNAS BÁSICAS
+# ------------------------------------------------------------------------------------
 
-    dfs = [pd.read_excel(arq) for arq in arquivos]
-    df = pd.concat(dfs, ignore_index=True)
-    return df
-
-# ====================================================================================
-# 📌 CARREGAR BASE E TRATAR COLUNAS
-# ====================================================================================
-
-df = carregar_dados()
-
-# Renomeia colunas para nomes sem espaço
 df = df.rename(columns=lambda x: x.strip().replace(" ", "_"))
 
 # Verificações básicas
@@ -67,7 +70,6 @@ for c in colunas_necessarias:
         st.error(f"A coluna obrigatória '{c}' não existe na base!")
         st.stop()
 
-# Converter horários e criar Data_Agendada
 df["Horário_agendado"] = pd.to_datetime(df["Horário_agendado"])
 df["Data_Agendada"] = df["Horário_agendado"].dt.date
 df["Horário_realizado"] = pd.to_datetime(df["Horário_realizado"], errors="coerce")
@@ -89,7 +91,7 @@ def classificar_tipo_dia(data):
 df["Tipo_Dia"] = pd.to_datetime(df["Data_Agendada"]).apply(classificar_tipo_dia)
 
 # ====================================================================================
-# 📌 CRIAR FAIXA HORÁRIA (com base no Horário_agendado)
+# 📌 CRIAR FAIXA HORÁRIA
 # ====================================================================================
 
 df["Hora_Agendada"] = df["Horário_agendado"].dt.hour
@@ -110,7 +112,7 @@ df["Adianta_5"] = df["Adiantamento_min"] > 5
 df["Adianta_10"] = df["Adiantamento_min"] > 10
 
 # ====================================================================================
-# 🎚️ FILTROS NA SIDEBAR (Empresa, Linha, Faixa Horária)
+# 🎚️ FILTROS NA SIDEBAR
 # ====================================================================================
 
 st.sidebar.header("Filtros")
@@ -298,3 +300,4 @@ st.plotly_chart(fig_cat, use_container_width=True)
 
 st.subheader("Tabela — Situação Categoria")
 st.dataframe(tabela_cat, use_container_width=True)
+
