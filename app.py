@@ -334,16 +334,25 @@ with tab_resumo:
 
             st.plotly_chart(fig_gauge, use_container_width=True)
 
-            st.markdown(
-                f"""
-                <div style="text-align:center; font-size:16px; margin-top:-12px;">
-                Último dia: <b>{qtd_dia}</b> viagens ({pct_dia:.2f}%) • 
-                Média {tipo_dia_ult.lower()} (últimos {JANELA_DIAS} dias): <b>{pct_media:.2f}%</b> 
-                ({'+' if desvio>=0 else ''}{desvio:.2f} p.p.)
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+# Texto explicativo abaixo do velocímetro
+if tipo_dia_ult == "Domingo":
+    referencia_texto = "Domingo anterior"
+elif tipo_dia_ult == "Sábado":
+    referencia_texto = "Sábado anterior"
+else:
+    referencia_texto = "Média dos 5 dias úteis anteriores"
+
+st.markdown(
+    f"""
+    <div style="text-align:center; font-size:18px; margin-top:-12px;">
+        Último dia: <b>{qtd_dia}</b> viagens ({pct_dia:.2f}%) • 
+        {referencia_texto}: <b>{pct_media:.2f}%</b> 
+        ({'+' if desvio >= 0 else ''}{desvio:.2f} p.p.)
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
 
 # ====================================================================================
 # TAB 2 — SITUAÇÃO DA VIAGEM
@@ -532,5 +541,6 @@ with tab_rankings:
                 .sort_values("Qtd_ocorrências", ascending=False)
             )
             st.dataframe(rank_cat.head(15), use_container_width=True)
+
 
 
