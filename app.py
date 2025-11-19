@@ -277,12 +277,13 @@ tab_resumo, tab_sit_viagem, tab_sit_cat, tab_rankings = st.tabs(
 # ====================================================================================
 
 with tab_resumo:
+
     st.header("Adiantamento — Último Dia vs Referência (dia equivalente anterior)")
 
     limites = [3, 5, 10]
-    colunas = st.columns(3)
+    colunas = st.columns(len(limites))
 
-    # Texto usado no resumo executivo
+    # determina janela de comparação
     if tipo_dia_ult == "Domingo":
         tipo_janela = "domingo anterior"
     elif tipo_dia_ult == "Sábado":
@@ -292,9 +293,10 @@ with tab_resumo:
 
     resumo_exec = []
 
-    # ---------------------- GAUGES ----------------------
+    # =========================================================
+    # GAUGES
+    # =========================================================
     for idx, LIM in enumerate(limites):
-
         qtd_dia, pct_dia, qtd_media, pct_media = calcula_adiantamento(df_tipo, df_dia, LIM)
         desvio = pct_dia - pct_media
 
@@ -331,19 +333,16 @@ with tab_resumo:
                     },
                 )
             )
-
             fig_gauge.update_layout(
                 title=f"Adiantadas > {LIM} min",
                 height=320,
                 margin=dict(l=10, r=10, t=70, b=10),
             )
-
             st.plotly_chart(fig_gauge, use_container_width=True)
 
-    # ====================================================================================
-    # RESUMO EXECUTIVO — CAIXAS ESTÉTICAS
-    # ====================================================================================
-
+    # =========================================================
+    # RESUMO EXECUTIVO  (❗ AQUI! DENTRO DO tab_resumo)
+    # =========================================================
     st.subheader("Resumo Executivo dos Adiantamentos")
 
     col1, col2, col3 = st.columns(3)
@@ -351,38 +350,34 @@ with tab_resumo:
 
     for col, dados in zip(colunas_exec, resumo_exec):
 
-        LIM = dados["limite"]
-        qtd_dia = dados["qtd_dia"]
-        pct_dia = dados["pct_dia"]
-        qtd_media = dados["qtd_media"]
-        pct_media = dados["pct_media"]
-        desvio = dados["desvio"]
-        tipo_janela = dados["tipo_janela"]
+        cor_desvio = "green" if dados["desvio"] >= 0 else "red"
 
-        cor_desvio = "#008000" if desvio >= 0 else "#cc0000"
-
-        html_card = textwrap.dedent(f"""
+        html_card = f"""
         <div style="background:#ffffff; border-radius:12px; padding:18px;
                     box-shadow:0 3px 8px rgba(0,0,0,0.12); font-family:Arial;">
-            <h3 style="margin-top:0; margin-bottom:10px;">▶ {LIM} min</h3>
+            <h3 style="margin-top:0; margin-bottom:10px;">▶ {dados['limite']} min</h3>
 
-            <div style="font-size:26px; font-weight:600; margin-bottom:10px;">
-                {qtd_dia} viagens
+            <div style="font-size:26px; font-weight:600; margin-bottom:6px;">
+                {dados['qtd_dia']} viagens
             </div>
 
-            <p style="font-size:18px;"><b>📊 Último dia:</b> {pct_dia:.2f}%</p>
-            <p style="font-size:16px; color:#555;">
-                <b>📅 Referência:</b> {pct_media:.2f}%  
-                <br><i>({tipo_janela})</i>
-            </p>
+            <div style="font-size:18px; color:#444;">
+                📊 Último dia: <b>{dados['pct_dia']:.2f}%</b>
+            </div>
 
-            <p style="font-size:20px; color:{cor_desvio}; margin-top:12px;">
-                <b>{desvio:+.2f} p.p.</b>
-            </p>
+            <div style="font-size:16px; color:#666; margin-top:4px;">
+                📅 Referência: <b>{dados['pct_media']:.2f}%</b><br/>
+                <i>{dados['tipo_janela']}</i>
+            </div>
+
+            <div style="font-size:18px; color:{cor_desvio}; margin-top:10px;">
+                <b>{dados['desvio']:+.2f} p.p.</b>
+            </div>
         </div>
-        """)
+        """
 
         col.markdown(html_card, unsafe_allow_html=True)
+
 
 # ====================================================================================
 # TAB 2 — SITUAÇÃO DA VIAGEM
@@ -563,3 +558,4 @@ with tab_rankings:
             )
 
             st.dataframe(rank_cat.head(15), use_container_width=True)
+
