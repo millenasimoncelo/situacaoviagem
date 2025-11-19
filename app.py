@@ -310,14 +310,14 @@ with tab_resumo:
         referencia_texto = "Média dos 5 dias úteis anteriores"
         tipo_janela = "média dos 5 dias úteis anteriores"
 
+    # =====================================================================
+    # 📌 VELOCÍMETROS
+    # =====================================================================
     for idx, LIM in enumerate(limites):
         qtd_dia, pct_dia, qtd_media, pct_media = calcula_adiantamento(df_tipo, df_dia, LIM)
         desvio_pct = pct_dia - pct_media
 
         with colunas[idx]:
-            # ---------------------
-            # GAUGE
-            # ---------------------
             fig_gauge = go.Figure(
                 go.Indicator(
                     mode="gauge+number+delta",
@@ -349,25 +349,59 @@ with tab_resumo:
 
             st.plotly_chart(fig_gauge, use_container_width=True)
 
-            # ---------------------
-            # TEXTO EXPLICATIVO INDIVIDUAL
-            # ---------------------
-            variacao_pct = f"{desvio_pct:+.2f} p.p."
-            variacao_viagens = qtd_dia - qtd_media
+    # ====================================================================================
+    # 🟦 CARDS EXECUTIVOS — MODELO 3
+    # ====================================================================================
 
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.subheader("Resumo Executivo dos Adiantamentos")
+
+    col_cards = st.columns(3)
+    titulos = {3: "> 3 min", 5: "> 5 min", 10: "> 10 min"}
+
+    for idx, LIM in enumerate(limites):
+        qtd_dia, pct_dia, qtd_media, pct_media = calcula_adiantamento(df_tipo, df_dia, LIM)
+        desvio = pct_dia - pct_media
+
+        seta = "▲" if desvio > 0 else "▼"
+        cor = "green" if desvio > 0 else "red"
+
+        with col_cards[idx]:
             st.markdown(
                 f"""
-                <div style="text-align:center; font-size:16px; margin-top:-12px;">
-                    Ocorreram <b>{qtd_dia}</b> viagens com adiantamento superior a 
-                    <b>{LIM} minutos</b> no último dia, representando 
-                    <b>{pct_dia:.2f}%</b> das viagens. <br>
-                    No período de referência (<i>{tipo_janela}</i>), a média foi de 
-                    <b>{qtd_media:.0f}</b> viagens (<b>{pct_media:.2f}%</b>). <br>
-                    Variação: <b>{variacao_pct}</b>.
+                <div style="
+                    background-color:#FFFFFF;
+                    border-radius:12px;
+                    padding:18px;
+                    box-shadow:0px 2px 8px rgba(0,0,0,0.12);
+                    font-size:17px;
+                    line-height:1.5;
+                ">
+                    <div style="font-size:20px; font-weight:700; margin-bottom:10px;">
+                        {titulos[LIM]}
+                    </div>
+
+                    <div style="font-size:28px; font-weight:600; margin-bottom:6px;">
+                        {qtd_dia} viagens
+                    </div>
+
+                    <div style="font-size:20px; color:#444;">
+                        📊 Último dia: <b>{pct_dia:.2f}%</b>
+                    </div>
+
+                    <div style="font-size:18px; color:#666;">
+                        📅 Referência (<i>{tipo_janela}</i>): 
+                        <b>{pct_media:.2f}%</b>
+                    </div>
+
+                    <div style="font-size:20px; color:{cor}; margin-top:8px;">
+                        {seta} {desvio:.2f} p.p.
+                    </div>
                 </div>
                 """,
                 unsafe_allow_html=True
             )
+
 
 
 # ====================================================================================
@@ -557,6 +591,7 @@ with tab_rankings:
                 .sort_values("Qtd_ocorrências", ascending=False)
             )
             st.dataframe(rank_cat.head(15), use_container_width=True)
+
 
 
 
