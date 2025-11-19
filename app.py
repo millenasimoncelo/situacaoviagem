@@ -1,5 +1,5 @@
 # ====================================================================================
-# PAINEL DE CATEGORIZAÇÃO DE VIAGENS — versão com upload e suporte a CSV/XLSX
+# PAINEL DE CATEGORIZAÇÃO DE VIAGENS — versão Streamlit com UPLOAD DE ARQUIVOS
 # ====================================================================================
 
 import os
@@ -29,68 +29,63 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# ------------------------------------------------------------------------------------
-# 📌 UPLOAD DOS ARQUIVOS — FUNCIONA NA NUVEM E LOCAL
-# ------------------------------------------------------------------------------------
-
-st.sidebar.header("Carregar dados")
-
-uploaded_files = st.sidebar.file_uploader(
-    "Envie seus arquivos .xlsx ou .csv da categorização",
-    type=["xlsx", "csv"],
-    accept_multiple_files=True
-)
-
-if not uploaded_files:
-    st.warning("Envie pelo menos um arquivo .xlsx ou .csv para iniciar o painel.")
-    st.stop()
 
 # ------------------------------------------------------------------------------------
-# 📌 Função que carrega e concatena arquivos CSV/XLSX
+# 📌 Função para carregar DADOS enviados via upload
 # ------------------------------------------------------------------------------------
-
 @st.cache_data
 def carregar_dados_upload(arquivos):
     dfs = []
     for arquivo in arquivos:
         nome = arquivo.name.lower()
 
+        # CSV
         if nome.endswith(".csv"):
             df = pd.read_csv(
                 arquivo,
-                sep=";",              # SEPARADOR CORRETO
-                encoding="utf-8-sig", # REMOVE BOM
+                sep=";",                # SEPARADOR CERTO DO SEU ARQUIVO
+                encoding="utf-8-sig",   # ENCODING CERTO
                 low_memory=False
             )
+            dfs.append(df)
 
+        # XLSX
         elif nome.endswith(".xlsx"):
             df = pd.read_excel(arquivo)
+            dfs.append(df)
 
         else:
-            st.error(f"Formato não suportado: {arquivo.name}")
+            st.error("Formato não suportado. Envie arquivos .csv ou .xlsx.")
             st.stop()
 
-        dfs.append(df)
-
-    return pd.concat(dfs, ignore_index=True)
-
-
-# ------------------------------------------------------------------------------------
-# 📌 TRATAMENTO DAS COLUNAS BÁSICAS
-# ------------------------------------------------------------------------------------
-
-df = df.rename(columns=lambda x: x.strip().replace(" ", "_"))
-
-colunas_necessarias = ["Horário_agendado", "Horário_realizado", "Situação_viagem", "Situação_categoria"]
-
-for c in colunas_necessarias:
-    if c not in df.columns:
-        st.error(f"A coluna obrigatória '{c}' não existe na base!")
+    if len(dfs) == 0:
+        st.error("Nenhum arquivo enviado.")
         st.stop()
 
-df["Horário_agendado"] = pd.to_datetime(df["Horário_agendado"])
-df["Data_Agendada"] = df["Horário_agendado"].dt.date
-df["Horário_realizado"] = pd.to_datetime(df["Horário_realizado"], errors="coerce")
+    df_final = pd.concat(dfs, ignore_index=True)
+    return df_final
+
+
+# ------------------------------------------------------------------------------------
+# 📂 UPLOAD DO ARQUIVO
+# ------------------------------------------------------------------------------------
+with st.sidebar:
+    st.header("Carregar dados")
+    uploaded_files = st.file_uploader(
+        "Envie seus arquivos .xlsx ou .csv",
+        type=["xlsx", "csv"],
+        accept_multiple_files=True
+    )
+
+if not uploaded_files:
+    st.warning("Por favor, envie um arquivo para começar.")
+    st.stop()
+
+df = carregar_dados_upload(uploaded_files)
+
+# limpar nomes de colunas
+df = df.rename(columns=lambda x: x.strip().replace(" ", "_"))
+
 
 # ------------------------------------------------------------------------------------
 # 📌 Classificação do tipo de dia
@@ -106,54 +101,60 @@ def classificar_tipo_dia(data):
     else:
         return "Outro"
 
+
+# ====================================================================================
+# 📌 TRATAMENTO DAS COLUNAS BÁSICAS
+# ====================================================================================
+
+# Verificações básicas
+colunas_necessarias = ["Horário_agendado", "Horário_realizado", "Situação_viagem", "Situação_categoria"]
+
+for c in colunas_necessarias:
+    if c not in df.columns:
+        st.error(f"A coluna obrigatória '{c}' não existe na base!")
+        st.stop()
+
+# Converter horários e criar Data_Agendada
+df["Horário_agendado"] = pd.to_datetime(df["Horário_agendado"], errors="coerce")
+df["Data_Agendada"] = df["Horário_agendado"].dt.date
+df["Horário_realizado"] = pd.to_datetime(df["Horário_realizado"], errors="coerce")
+
 df["Tipo_Dia"] = pd.to_datetime(df["Data_Agendada"]).apply(classificar_tipo_dia)
 
 # ====================================================================================
-# 📌 CRIAR FAIXA HORÁRIA
+# 📌 CRIAÇÃO DA FAIXA HORÁRIA
 # ====================================================================================
 
 df["Hora_Agendada"] = df["Horário_agendado"].dt.hour
-df["Faixa_Horaria"] = df["Hora_Agendada"].apply(
-    lambda h: f"{int(h):02d}:00–{int(h):02d}:59" if pd.notnull(h) else "Sem horário"
-)
+df["Faixa_Horaria"] = df["Hora_Agendada"].apply(lambda h: f"{int(h):02d}:00–{int(h):02d}:59" if pd.notnull(h) else "Sem horário")
 
 # ====================================================================================
 # 📌 Cálculo do Adiantamento
 # ====================================================================================
 
-df["Adiantamento_min"] = (
-    df["Horário_realizado"] - df["Horário_agendado"]
-).dt.total_seconds() / 60
-
+df["Adiantamento_min"] = (df["Horário_realizado"] - df["Horário_agendado"]).dt.total_seconds() / 60
 df["Adianta_3"] = df["Adiantamento_min"] > 3
 df["Adianta_5"] = df["Adiantamento_min"] > 5
 df["Adianta_10"] = df["Adiantamento_min"] > 10
 
 # ====================================================================================
-# 🎚️ FILTROS NA SIDEBAR
+# 🎚️ FILTROS
 # ====================================================================================
 
 st.sidebar.header("Filtros")
 
 # Empresa
-if "Empresa" in df.columns:
-    empresas = sorted(df["Empresa"].dropna().unique())
-    empresas_sel = st.sidebar.multiselect("Empresa", options=empresas, default=empresas)
-else:
-    empresas_sel = []
+empresas = sorted(df["Empresa"].dropna().unique()) if "Empresa" in df.columns else []
+empresas_sel = st.sidebar.multiselect("Empresa", empresas, default=empresas)
 
 # Linha
-if "Linha" in df.columns:
-    linhas = sorted(df["Linha"].dropna().unique())
-    linhas_sel = st.sidebar.multiselect("Linha", options=linhas, default=linhas)
-else:
-    linhas_sel = []
+linhas = sorted(df["Linha"].dropna().unique()) if "Linha" in df.columns else []
+linhas_sel = st.sidebar.multiselect("Linha", linhas, default=linhas)
 
-# Faixa Horária
+# Faixa horária
 faixas = sorted(df["Faixa_Horaria"].dropna().unique())
-faixas_sel = st.sidebar.multiselect("Faixa horária (Horário agendado)", options=faixas, default=faixas)
+faixas_sel = st.sidebar.multiselect("Faixa Horária", faixas, default=faixas)
 
-# Aplicar filtros
 mask = pd.Series([True] * len(df))
 
 if empresas_sel and "Empresa" in df.columns:
@@ -171,12 +172,13 @@ if df_filtro.empty:
     st.warning("Nenhum dado encontrado com os filtros selecionados.")
     st.stop()
 
+
 # ====================================================================================
 # 📌 Preparação: Último dia e janela de 7 dias
 # ====================================================================================
 
 ultimo_dia = df_filtro["Data_Agendada"].max()
-tipo_dia_ult = df_filtro.loc[df_filtro["Data_Agendada"] == ultimo_dia, "Tipo_Dia"].iloc[0]
+tipo_dia_ult = df_filtro[df_filtro["Data_Agendada"] == ultimo_dia]["Tipo_Dia"].iloc[0]
 
 df_dia = df_filtro[df_filtro["Data_Agendada"] == ultimo_dia]
 
@@ -186,8 +188,9 @@ limite_data = ultimo_dia - pd.Timedelta(days=JANELA_DIAS)
 df_janela = df_filtro[df_filtro["Data_Agendada"] >= limite_data]
 df_tipo = df_janela[df_janela["Tipo_Dia"] == tipo_dia_ult]
 
+
 # ====================================================================================
-# 🔢 Funções auxiliares
+# 🔢 Função auxiliar
 # ====================================================================================
 
 def calcula_adiantamento(df_base, df_dia, limite):
@@ -199,22 +202,22 @@ def calcula_adiantamento(df_base, df_dia, limite):
 
     return qtd_dia, pct_dia, qtd_media, pct_media
 
+
 # ====================================================================================
-# ⏱️ SEÇÃO 1 — VELOCÍMETROS DE ADIANTAMENTO
+# SEÇÃO 1 — VELOCÍMETROS
 # ====================================================================================
 
-st.header(f"Adiantamento — Último Dia vs Média ({JANELA_DIAS} dias, mesmo tipo de dia)")
+st.header(f"Adiantamento das Viagens — Último Dia vs Média ({JANELA_DIAS} dias)")
 
 colunas = st.columns(3)
 limites = [3, 5, 10]
 
 for idx, LIM in enumerate(limites):
 
-    qtd_dia, pct_dia, _, pct_media = calcula_adiantamento(df_tipo, df_dia, LIM)
+    qtd_dia, pct_dia, qtd_media, pct_media = calcula_adiantamento(df_tipo, df_dia, LIM)
     desvio = pct_dia - pct_media
 
     with colunas[idx]:
-
         fig_gauge = go.Figure(
             go.Indicator(
                 mode="gauge+number+delta",
@@ -223,7 +226,7 @@ for idx, LIM in enumerate(limites):
                     "reference": pct_media,
                     "valueformat": ".2f",
                     "increasing.color": "green",
-                    "decreasing.color": "red"
+                    "decreasing.color": "red",
                 },
                 number={"suffix": "%", "font": {"size": 48}},
                 gauge={
@@ -254,71 +257,38 @@ for idx, LIM in enumerate(limites):
             unsafe_allow_html=True
         )
 
+
 # ====================================================================================
-# 📌 SEÇÃO 2 — SITUAÇÃO DA VIAGEM
+# SEÇÃO 2 — SITUAÇÃO DA VIAGEM
 # ====================================================================================
 
 st.header(f"Situação da Viagem — Último Dia vs Média ({JANELA_DIAS} dias)")
 
-df_ult = df_dia
-df_tipo_dia = df_tipo
-
-tab_ult = df_ult.groupby("Situação_viagem").size().reset_index(name="Qtd Último Dia")
-tab_tipo = df_tipo_dia.groupby("Situação_viagem").size().reset_index(name="Qtd Média TipoDia (7d)")
+tab_ult = df_dia.groupby("Situação_viagem").size().reset_index(name="Qtd Último Dia")
+tab_tipo = df_tipo.groupby("Situação_viagem").size().reset_index(name="Qtd Média TipoDia")
 
 tabela_vg = tab_ult.merge(tab_tipo, on="Situação_viagem", how="outer").fillna(0)
 
 tabela_vg["% Último Dia"] = tabela_vg["Qtd Último Dia"] / tabela_vg["Qtd Último Dia"].sum() * 100
-tabela_vg["% Média TipoDia (7d)"] = tabela_vg["Qtd Média TipoDia (7d)"] / tabela_vg["Qtd Média TipoDia (7d)"].sum() * 100
-tabela_vg["Desvio (p.p.)"] = tabela_vg["% Último Dia"] - tabela_vg["% Média TipoDia (7d)"]
+tabela_vg["% Média TipoDia"] = tabela_vg["Qtd Média TipoDia"] / tabela_vg["Qtd Média TipoDia"].sum() * 100
+tabela_vg["Desvio (p.p.)"] = tabela_vg["% Último Dia"] - tabela_vg["% Média TipoDia"]
 
-st.subheader("Tabela — Situação da Viagem")
 st.dataframe(tabela_vg, use_container_width=True)
 
-grafico_vg = tabela_vg[tabela_vg["Situação_viagem"] != "Viagem concluída"]
-
-fig_vg = px.bar(
-    grafico_vg,
-    x="Situação_viagem",
-    y=["% Média TipoDia (7d)", "% Último Dia"],
-    barmode="group",
-    labels={"value": "% das viagens", "Situação_viagem": "Situação"},
-    height=450
-)
-
-fig_vg.update_layout(title="Situação da Viagem — Comparação (sem 'Viagem concluída')")
-st.plotly_chart(fig_vg, use_container_width=True)
 
 # ====================================================================================
-# 📌 SEÇÃO 3 — SITUAÇÃO CATEGORIA
+# SEÇÃO 3 — SITUAÇÃO CATEGORIA
 # ====================================================================================
 
 st.header(f"Situação Categoria — Último Dia vs Média ({JANELA_DIAS} dias)")
 
-tab_cat_ult = df_ult.groupby("Situação_categoria").size().reset_index(name="Qtd Último Dia")
-tab_cat_tipo = df_tipo_dia.groupby("Situação_categoria").size().reset_index(name="Qtd Média TipoDia (7d)")
+tab_cat_ult = df_dia.groupby("Situação_categoria").size().reset_index(name="Qtd Último Dia")
+tab_cat_tipo = df_tipo.groupby("Situação_categoria").size().reset_index(name="Qtd Média TipoDia")
 
 tabela_cat = tab_cat_ult.merge(tab_cat_tipo, on="Situação_categoria", how="outer").fillna(0)
 
 tabela_cat["% Último Dia"] = tabela_cat["Qtd Último Dia"] / tabela_cat["Qtd Último Dia"].sum() * 100
-tabela_cat["% Média TipoDia (7d)"] = tabela_cat["Qtd Média TipoDia (7d)"] / tabela_cat["Qtd Média TipoDia (7d)"].sum() * 100
-tabela_cat["Desvio (p.p.)"] = tabela_cat["% Último Dia"] - tabela_cat["% Média TipoDia (7d)"]
+tabela_cat["% Média TipoDia"] = tabela_cat["Qtd Média TipoDia"] / tabela_cat["Qtd Média TipoDia"].sum() * 100
+tabela_cat["Desvio (p.p.)"] = tabela_cat["% Último Dia"] - tabela_cat["% Média TipoDia"]
 
-fig_cat = px.bar(
-    tabela_cat,
-    x="Situação_categoria",
-    y=["% Média TipoDia (7d)", "% Último Dia"],
-    barmode="group",
-    labels={"value": "% das viagens", "Situação_categoria": "Categoria"},
-    height=450
-)
-
-fig_cat.update_layout(title="Situação Categoria — Comparação")
-st.plotly_chart(fig_cat, use_container_width=True)
-
-st.subheader("Tabela — Situação Categoria")
 st.dataframe(tabela_cat, use_container_width=True)
-
-
-
-
