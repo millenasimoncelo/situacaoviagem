@@ -19,47 +19,38 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# TÍTULO DO PAINEL
 st.title("Painel de Categorização de Viagens")
 
-# Remove header do Streamlit
-st.markdown("""
-    <style>
-        header {visibility: hidden;}
-    </style>
-""", unsafe_allow_html=True)
-
-
 # ------------------------------------------------------------------------------------
-# 📌 Função para carregar DADOS enviados via upload
+# 📌 Função para carregar DADOS enviados via upload (CSV ; ou XLSX)
 # ------------------------------------------------------------------------------------
+
 @st.cache_data
 def carregar_dados_upload(arquivos):
     dfs = []
     for arquivo in arquivos:
         nome = arquivo.name.lower()
 
-        # CSV
         if nome.endswith(".csv"):
-            df = pd.read_csv(
+            # seu CSV real: separador ; e UTF-8 com BOM
+            df_arq = pd.read_csv(
                 arquivo,
-                sep=";",                # SEPARADOR CERTO DO SEU ARQUIVO
-                encoding="utf-8-sig",   # ENCODING CERTO
+                sep=";",
+                encoding="utf-8-sig",
                 low_memory=False
             )
-            dfs.append(df)
 
-        # XLSX
         elif nome.endswith(".xlsx"):
-            df = pd.read_excel(arquivo)
-            dfs.append(df)
+            df_arq = pd.read_excel(arquivo)
 
         else:
             st.error("Formato não suportado. Envie arquivos .csv ou .xlsx.")
             st.stop()
 
-    if len(dfs) == 0:
-        st.error("Nenhum arquivo enviado.")
+        dfs.append(df_arq)
+
+    if not dfs:
+        st.error("Nenhum arquivo válido enviado.")
         st.stop()
 
     df_final = pd.concat(dfs, ignore_index=True)
@@ -69,6 +60,7 @@ def carregar_dados_upload(arquivos):
 # ------------------------------------------------------------------------------------
 # 📂 UPLOAD DO ARQUIVO
 # ------------------------------------------------------------------------------------
+
 with st.sidebar:
     st.header("Carregar dados")
     uploaded_files = st.file_uploader(
@@ -83,56 +75,66 @@ if not uploaded_files:
 
 df = carregar_dados_upload(uploaded_files)
 
-# limpar nomes de colunas
-df = df.rename(columns=lambda x: x.strip().replace(" ", "_"))
-
+# limpar nomes de colunas (tira espaços e troca por _)
+df = df.rename(columns=lambda x: str(x).strip().replace(" ", "_"))
 
 # ------------------------------------------------------------------------------------
-# 📌 Classificação do tipo de dia
+# 📌 Função para classificar tipo de dia
 # ------------------------------------------------------------------------------------
 
-def classificar_tipo_dia(data):
-    if data.weekday() <= 4:
+def classificar_tipo_dia(ts):
+    # ts é um Timestamp (datetime64)
+    if pd.isna(ts):
+        return "Desconhecido"
+    wd = ts.weekday()
+    if wd <= 4:
         return "Dia útil"
-    elif data.weekday() == 5:
+    elif wd == 5:
         return "Sábado"
-    elif data.weekday() == 6:
-        return "Domingo"
     else:
-        return "Outro"
-
+        return "Domingo"
 
 # ====================================================================================
 # 📌 TRATAMENTO DAS COLUNAS BÁSICAS
 # ====================================================================================
 
-# Verificações básicas
-colunas_necessarias = ["Horário_agendado", "Horário_realizado", "Situação_viagem", "Situação_categoria"]
+colunas_necessarias = ["Horário_agendado", "Horário_realizado",
+                       "Situação_viagem", "Situação_categoria"]
 
 for c in colunas_necessarias:
     if c not in df.columns:
         st.error(f"A coluna obrigatória '{c}' não existe na base!")
         st.stop()
 
-# Converter horários e criar Data_Agendada
+# Horário_agendado como datetime
 df["Horário_agendado"] = pd.to_datetime(df["Horário_agendado"], errors="coerce")
-df["Data_Agendada"] = df["Horário_agendado"].dt.date
+
+# Data_Agendada como datetime normalizado (meia-noite)
+df["Data_Agendada"] = df["Horário_agendado"].dt.normalize()
+
+# Horário_realizado como datetime
 df["Horário_realizado"] = pd.to_datetime(df["Horário_realizado"], errors="coerce")
 
-df["Tipo_Dia"] = pd.to_datetime(df["Data_Agendada"]).apply(classificar_tipo_dia)
+# Tipo de dia
+df["Tipo_Dia"] = df["Data_Agendada"].apply(classificar_tipo_dia)
 
 # ====================================================================================
 # 📌 CRIAÇÃO DA FAIXA HORÁRIA
 # ====================================================================================
 
 df["Hora_Agendada"] = df["Horário_agendado"].dt.hour
-df["Faixa_Horaria"] = df["Hora_Agendada"].apply(lambda h: f"{int(h):02d}:00–{int(h):02d}:59" if pd.notnull(h) else "Sem horário")
+df["Faixa_Horaria"] = df["Hora_Agendada"].apply(
+    lambda h: f"{int(h):02d}:00–{int(h):02d}:59" if pd.notnull(h) else "Sem horário"
+)
 
 # ====================================================================================
 # 📌 Cálculo do Adiantamento
 # ====================================================================================
 
-df["Adiantamento_min"] = (df["Horário_realizado"] - df["Horário_agendado"]).dt.total_seconds() / 60
+df["Adiantamento_min"] = (
+    df["Horário_realizado"] - df["Horário_agendado"]
+).dt.total_seconds() / 60
+
 df["Adianta_3"] = df["Adiantamento_min"] > 3
 df["Adianta_5"] = df["Adiantamento_min"] > 5
 df["Adianta_10"] = df["Adiantamento_min"] > 10
@@ -144,18 +146,24 @@ df["Adianta_10"] = df["Adiantamento_min"] > 10
 st.sidebar.header("Filtros")
 
 # Empresa
-empresas = sorted(df["Empresa"].dropna().unique()) if "Empresa" in df.columns else []
-empresas_sel = st.sidebar.multiselect("Empresa", empresas, default=empresas)
+if "Empresa" in df.columns:
+    empresas = sorted(df["Empresa"].dropna().unique())
+    empresas_sel = st.sidebar.multiselect("Empresa", empresas, default=empresas)
+else:
+    empresas_sel = []
 
 # Linha
-linhas = sorted(df["Linha"].dropna().unique()) if "Linha" in df.columns else []
-linhas_sel = st.sidebar.multiselect("Linha", linhas, default=linhas)
+if "Linha" in df.columns:
+    linhas = sorted(df["Linha"].dropna().unique())
+    linhas_sel = st.sidebar.multiselect("Linha", linhas, default=linhas)
+else:
+    linhas_sel = []
 
 # Faixa horária
 faixas = sorted(df["Faixa_Horaria"].dropna().unique())
 faixas_sel = st.sidebar.multiselect("Faixa Horária", faixas, default=faixas)
 
-mask = pd.Series([True] * len(df))
+mask = pd.Series(True, index=df.index)
 
 if empresas_sel and "Empresa" in df.columns:
     mask &= df["Empresa"].isin(empresas_sel)
@@ -172,13 +180,18 @@ if df_filtro.empty:
     st.warning("Nenhum dado encontrado com os filtros selecionados.")
     st.stop()
 
+# ====================================================================================
+# 📌 Preparação: Último dia e janela de 7 dias (robusto)
+# ====================================================================================
 
-# ====================================================================================
-# 📌 Preparação: Último dia e janela de 7 dias
-# ====================================================================================
+# garante que Data_Agendada é datetime
+df_filtro["Data_Agendada"] = pd.to_datetime(df_filtro["Data_Agendada"], errors="coerce")
+
+if df_filtro["Data_Agendada"].notna().sum() == 0:
+    st.error("Não foi possível identificar datas válidas em Data_Agendada.")
+    st.stop()
 
 ultimo_dia = df_filtro["Data_Agendada"].max()
-tipo_dia_ult = df_filtro[df_filtro["Data_Agendada"] == ultimo_dia]["Tipo_Dia"].iloc[0]
 
 df_dia = df_filtro[df_filtro["Data_Agendada"] == ultimo_dia]
 
@@ -186,22 +199,25 @@ JANELA_DIAS = 7
 limite_data = ultimo_dia - pd.Timedelta(days=JANELA_DIAS)
 
 df_janela = df_filtro[df_filtro["Data_Agendada"] >= limite_data]
-df_tipo = df_janela[df_janela["Tipo_Dia"] == tipo_dia_ult]
 
+tipo_dia_ult = df_dia["Tipo_Dia"].iloc[0]
+df_tipo = df_janela[df_janela["Tipo_Dia"] == tipo_dia_ult]
 
 # ====================================================================================
 # 🔢 Função auxiliar
 # ====================================================================================
 
 def calcula_adiantamento(df_base, df_dia, limite):
+    if len(df_dia) == 0 or len(df_base) == 0:
+        return 0, 0.0, 0.0, 0.0
+
     qtd_dia = (df_dia["Adiantamento_min"] > limite).sum()
-    pct_dia = qtd_dia / len(df_dia) * 100 if len(df_dia) else 0
+    pct_dia = qtd_dia / len(df_dia) * 100
 
     qtd_media = (df_base["Adiantamento_min"] > limite).sum()
-    pct_media = qtd_media / len(df_base) * 100 if len(df_base) else 0
+    pct_media = qtd_media / len(df_base) * 100
 
     return qtd_dia, pct_dia, qtd_media, pct_media
-
 
 # ====================================================================================
 # SEÇÃO 1 — VELOCÍMETROS
@@ -213,7 +229,6 @@ colunas = st.columns(3)
 limites = [3, 5, 10]
 
 for idx, LIM in enumerate(limites):
-
     qtd_dia, pct_dia, qtd_media, pct_media = calcula_adiantamento(df_tipo, df_dia, LIM)
     desvio = pct_dia - pct_media
 
@@ -228,9 +243,9 @@ for idx, LIM in enumerate(limites):
                     "increasing.color": "green",
                     "decreasing.color": "red",
                 },
-                number={"suffix": "%", "font": {"size": 48}},
+                number={"suffix": "%", "font": {"size": 40}},
                 gauge={
-                    "axis": {"range": [0, max(10, pct_dia * 3)], "tickwidth": 1},
+                    "axis": {"range": [0, max(10, pct_dia * 3, pct_media * 3)], "tickwidth": 1},
                     "bar": {"color": "#4CAF50"},
                     "borderwidth": 2,
                     "bgcolor": "white",
@@ -240,7 +255,7 @@ for idx, LIM in enumerate(limites):
 
         fig_gauge.update_layout(
             title=f"Adiantadas > {LIM} min",
-            height=360,
+            height=320,
             margin=dict(l=10, r=10, t=70, b=10)
         )
 
@@ -248,7 +263,7 @@ for idx, LIM in enumerate(limites):
 
         st.markdown(
             f"""
-            <div style="text-align:center; font-size:18px; margin-top:-12px;">
+            <div style="text-align:center; font-size:16px; margin-top:-12px;">
             Último dia: <b>{qtd_dia}</b> viagens ({pct_dia:.2f}%) • 
             Média {tipo_dia_ult.lower()} (últimos {JANELA_DIAS} dias): <b>{pct_media:.2f}%</b> 
             ({'+' if desvio>=0 else ''}{desvio:.2f} p.p.)
@@ -256,7 +271,6 @@ for idx, LIM in enumerate(limites):
             """,
             unsafe_allow_html=True
         )
-
 
 # ====================================================================================
 # SEÇÃO 2 — SITUAÇÃO DA VIAGEM
@@ -273,8 +287,8 @@ tabela_vg["% Último Dia"] = tabela_vg["Qtd Último Dia"] / tabela_vg["Qtd Últi
 tabela_vg["% Média TipoDia"] = tabela_vg["Qtd Média TipoDia"] / tabela_vg["Qtd Média TipoDia"].sum() * 100
 tabela_vg["Desvio (p.p.)"] = tabela_vg["% Último Dia"] - tabela_vg["% Média TipoDia"]
 
+st.subheader("Tabela — Situação da Viagem")
 st.dataframe(tabela_vg, use_container_width=True)
-
 
 # ====================================================================================
 # SEÇÃO 3 — SITUAÇÃO CATEGORIA
@@ -291,4 +305,7 @@ tabela_cat["% Último Dia"] = tabela_cat["Qtd Último Dia"] / tabela_cat["Qtd Ú
 tabela_cat["% Média TipoDia"] = tabela_cat["Qtd Média TipoDia"] / tabela_cat["Qtd Média TipoDia"].sum() * 100
 tabela_cat["Desvio (p.p.)"] = tabela_cat["% Último Dia"] - tabela_cat["% Média TipoDia"]
 
+st.subheader("Tabela — Situação Categoria")
 st.dataframe(tabela_cat, use_container_width=True)
+
+
