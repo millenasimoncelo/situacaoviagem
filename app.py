@@ -183,24 +183,87 @@ if df_filtro.empty:
     st.stop()
 
 # ====================================================================================
-# 📌 Preparação: Último dia e janela de 7 dias (robusto)
+# 📌 Preparação: Lógica correta para comparação por tipo de dia
 # ====================================================================================
 
+# Garante formato datetime
 df_filtro["Data_Agendada"] = pd.to_datetime(df_filtro["Data_Agendada"], errors="coerce")
 
-if df_filtro["Data_Agendada"].notna().sum() == 0:
-    st.error("Não foi possível identificar datas válidas em Data_Agendada.")
+# Último dia (dia atual da base filtrada)
+ultimo_dia = df_filtro["Data_Agendada"].max()
+
+# Registros do dia atual
+df_dia = df_filtro[df_filtro["Data_Agendada"] == ultimo_dia].copy()
+
+# Tipo do dia atual
+tipo_dia_ult = df_dia["Tipo_Dia"].iloc[0]  # Dia útil, Sábado, Domingo
+
+# -------------------------------------------------------------------------
+# 1) DOMINGO → comparar com o domingo anterior
+# -------------------------------------------------------------------------
+if tipo_dia_ult == "Domingo":
+    domingos_anteriores = (
+        df_filtro[
+            (df_filtro["Tipo_Dia"] == "Domingo")
+            & (df_filtro["Data_Agendada"] < ultimo_dia)
+        ]
+        .sort_values("Data_Agendada", ascending=False)
+    )
+
+    if len(domingos_anteriores) == 0:
+        st.error("Não há domingo anterior para comparação.")
+        st.stop()
+
+    data_ref = domingos_anteriores["Data_Agendada"].iloc[0]
+    df_tipo = domingos_anteriores[domingos_anteriores["Data_Agendada"] == data_ref]
+
+# -------------------------------------------------------------------------
+# 2) SÁBADO → comparar com o sábado anterior
+# -------------------------------------------------------------------------
+elif tipo_dia_ult == "Sábado":
+    sabados_anteriores = (
+        df_filtro[
+            (df_filtro["Tipo_Dia"] == "Sábado")
+            & (df_filtro["Data_Agendada"] < ultimo_dia)
+        ]
+        .sort_values("Data_Agendada", ascending=False)
+    )
+
+    if len(sabados_anteriores) == 0:
+        st.error("Não há sábado anterior para comparação.")
+        st.stop()
+
+    data_ref = sabados_anteriores["Data_Agendada"].iloc[0]
+    df_tipo = sabados_anteriores[sabados_anteriores["Data_Agendada"] == data_ref]
+
+# -------------------------------------------------------------------------
+# 3) DIA ÚTIL → média dos últimos 5 dias úteis anteriores
+# -------------------------------------------------------------------------
+elif tipo_dia_ult == "Dia útil":
+    dias_uteis_anteriores = (
+        df_filtro[
+            (df_filtro["Tipo_Dia"] == "Dia útil")
+            & (df_filtro["Data_Agendada"] < ultimo_dia)
+        ]
+        .sort_values("Data_Agendada", ascending=False)
+    )
+
+    if len(dias_uteis_anteriores) == 0:
+        st.error("Não há dias úteis anteriores suficientes.")
+        st.stop()
+
+    datas_ref = dias_uteis_anteriores["Data_Agendada"].unique()[:5]
+    df_tipo = dias_uteis_anteriores[
+        dias_uteis_anteriores["Data_Agendada"].isin(datas_ref)
+    ]
+
+# -------------------------------------------------------------------------
+# OUTROS CASOS (não deve acontecer)
+# -------------------------------------------------------------------------
+else:
+    st.error(f"Tipo de dia '{tipo_dia_ult}' não reconhecido.")
     st.stop()
 
-ultimo_dia = df_filtro["Data_Agendada"].max()
-df_dia = df_filtro[df_filtro["Data_Agendada"] == ultimo_dia]
-
-JANELA_DIAS = 7
-limite_data = ultimo_dia - pd.Timedelta(days=JANELA_DIAS)
-df_janela = df_filtro[df_filtro["Data_Agendada"] >= limite_data]
-
-tipo_dia_ult = df_dia["Tipo_Dia"].iloc[0]
-df_tipo = df_janela[df_janela["Tipo_Dia"] == tipo_dia_ult]
 
 # ====================================================================================
 # 🔢 Função auxiliar de adiantamento
@@ -469,3 +532,4 @@ with tab_rankings:
                 .sort_values("Qtd_ocorrências", ascending=False)
             )
             st.dataframe(rank_cat.head(15), use_container_width=True)
+
