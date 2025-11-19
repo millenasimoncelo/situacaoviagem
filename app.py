@@ -350,38 +350,38 @@ with tab_resumo:
             st.plotly_chart(fig_gauge, use_container_width=True)
 
     # ====================================================================================
-    # 🟦 CARDS EXECUTIVOS — MODELO 3
-    # ====================================================================================
+# RESUMO EXECUTIVO (3 CARDS BONITOS)
+# ====================================================================================
 
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.subheader("Resumo Executivo dos Adiantamentos")
+st.subheader("Resumo Executivo dos Adiantamentos")
+card_cols = st.columns(3)
 
-    col_cards = st.columns(3)
-    titulos = {3: "> 3 min", 5: "> 5 min", 10: "> 10 min"}
+nomes_limites = {
+    3: "> 3 min",
+    5: "> 5 min",
+    10: "> 10 min"
+}
 
+with st.container():
     for idx, LIM in enumerate(limites):
         qtd_dia, pct_dia, qtd_media, pct_media = calcula_adiantamento(df_tipo, df_dia, LIM)
-        desvio = pct_dia - pct_media
+        desvio_pct = pct_dia - pct_media
+        variacao_cor = "green" if desvio_pct >= 0 else "red"
 
-        seta = "▲" if desvio > 0 else "▼"
-        cor = "green" if desvio > 0 else "red"
-
-        with col_cards[idx]:
+        with card_cols[idx]:
             st.markdown(
                 f"""
                 <div style="
-                    background-color:#FFFFFF;
-                    border-radius:12px;
-                    padding:18px;
-                    box-shadow:0px 2px 8px rgba(0,0,0,0.12);
-                    font-size:17px;
-                    line-height:1.5;
-                ">
-                    <div style="font-size:20px; font-weight:700; margin-bottom:10px;">
-                        {titulos[LIM]}
-                    </div>
+                    border: 1px solid #DDD; 
+                    border-radius: 12px; 
+                    padding: 18px; 
+                    background: #FAFAFA;
+                    box-shadow: 0px 2px 5px rgba(0,0,0,0.05);
+                    ">
+                    
+                    <h3 style="margin-top:0;">{nomes_limites[LIM]}</h3>
 
-                    <div style="font-size:28px; font-weight:600; margin-bottom:6px;">
+                    <div style="font-size:28px; font-weight:600; margin-bottom:4px;">
                         {qtd_dia} viagens
                     </div>
 
@@ -389,18 +389,19 @@ with tab_resumo:
                         📊 Último dia: <b>{pct_dia:.2f}%</b>
                     </div>
 
-                    <div style="font-size:18px; color:#666;">
-                        📅 Referência (<i>{tipo_janela}</i>): 
+                    <div style="font-size:18px; color:#666; margin-top:4px;">
+                        🧭 Referência (<i>{tipo_janela}</i>):  
                         <b>{pct_media:.2f}%</b>
                     </div>
 
-                    <div style="font-size:20px; color:{cor}; margin-top:8px;">
-                        {seta} {desvio:.2f} p.p.
+                    <div style="font-size:20px; color:{variacao_cor}; margin-top:8px;">
+                        {desvio_pct:+.2f} p.p.
                     </div>
                 </div>
                 """,
                 unsafe_allow_html=True
             )
+
 
 
 
@@ -591,6 +592,7 @@ with tab_rankings:
                 .sort_values("Qtd_ocorrências", ascending=False)
             )
             st.dataframe(rank_cat.head(15), use_container_width=True)
+
 
 
 
