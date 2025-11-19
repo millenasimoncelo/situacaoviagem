@@ -1,5 +1,5 @@
 # ====================================================================================
-# PAINEL DE CATEGORIZAÇÃO DE VIAGENS — versão com filtros e janela 7 dias (19/11/2025)
+# PAINEL DE CATEGORIZAÇÃO DE VIAGENS — versão com upload e suporte a CSV/XLSX
 # ====================================================================================
 
 import os
@@ -30,30 +30,44 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ------------------------------------------------------------------------------------
-# 📌 UPLOAD DOS ARQUIVOS (FUNCIONA LOCAL E NA NUVEM)
+# 📌 UPLOAD DOS ARQUIVOS — FUNCIONA NA NUVEM E LOCAL
 # ------------------------------------------------------------------------------------
 
 st.sidebar.header("Carregar dados")
 
 uploaded_files = st.sidebar.file_uploader(
-    "Envie seus arquivos .xlsx da categorização",
-    type=["xlsx"],
+    "Envie seus arquivos .xlsx ou .csv da categorização",
+    type=["xlsx", "csv"],
     accept_multiple_files=True
 )
 
 if not uploaded_files:
-    st.warning("Envie pelo menos um arquivo .xlsx para iniciar o painel.")
+    st.warning("Envie pelo menos um arquivo .xlsx ou .csv para iniciar o painel.")
     st.stop()
 
-# Função que concatena todos os arquivos enviados
+# ------------------------------------------------------------------------------------
+# 📌 Função que carrega e concatena arquivos CSV/XLSX
+# ------------------------------------------------------------------------------------
+
 @st.cache_data
 def carregar_dados_upload(arquivos):
     dfs = []
     for arquivo in arquivos:
-        df = pd.read_excel(arquivo)
+        nome = arquivo.name.lower()
+
+        if nome.endswith(".csv"):
+            df = pd.read_csv(arquivo, sep=",", encoding="utf-8", low_memory=False)
+
+        elif nome.endswith(".xlsx"):
+            df = pd.read_excel(arquivo)
+
+        else:
+            st.error(f"Formato não suportado: {arquivo.name}")
+            st.stop()
+
         dfs.append(df)
-    df_final = pd.concat(dfs, ignore_index=True)
-    return df_final
+
+    return pd.concat(dfs, ignore_index=True)
 
 df = carregar_dados_upload(uploaded_files)
 
@@ -63,8 +77,8 @@ df = carregar_dados_upload(uploaded_files)
 
 df = df.rename(columns=lambda x: x.strip().replace(" ", "_"))
 
-# Verificações básicas
 colunas_necessarias = ["Horário_agendado", "Horário_realizado", "Situação_viagem", "Situação_categoria"]
+
 for c in colunas_necessarias:
     if c not in df.columns:
         st.error(f"A coluna obrigatória '{c}' não existe na base!")
@@ -169,7 +183,7 @@ df_janela = df_filtro[df_filtro["Data_Agendada"] >= limite_data]
 df_tipo = df_janela[df_janela["Tipo_Dia"] == tipo_dia_ult]
 
 # ====================================================================================
-# 🔢 Funções auxiliares de cálculo
+# 🔢 Funções auxiliares
 # ====================================================================================
 
 def calcula_adiantamento(df_base, df_dia, limite):
@@ -185,7 +199,7 @@ def calcula_adiantamento(df_base, df_dia, limite):
 # ⏱️ SEÇÃO 1 — VELOCÍMETROS DE ADIANTAMENTO
 # ====================================================================================
 
-st.header(f"Adiantamento das Viagens — Último Dia vs Média ({JANELA_DIAS} dias, mesmo tipo de dia)")
+st.header(f"Adiantamento — Último Dia vs Média ({JANELA_DIAS} dias, mesmo tipo de dia)")
 
 colunas = st.columns(3)
 limites = [3, 5, 10]
@@ -254,7 +268,7 @@ tabela_vg["% Último Dia"] = tabela_vg["Qtd Último Dia"] / tabela_vg["Qtd Últi
 tabela_vg["% Média TipoDia (7d)"] = tabela_vg["Qtd Média TipoDia (7d)"] / tabela_vg["Qtd Média TipoDia (7d)"].sum() * 100
 tabela_vg["Desvio (p.p.)"] = tabela_vg["% Último Dia"] - tabela_vg["% Média TipoDia (7d)"]
 
-st.subheader("Tabela — Situação da Viagem (inclui 'Viagem concluída')")
+st.subheader("Tabela — Situação da Viagem")
 st.dataframe(tabela_vg, use_container_width=True)
 
 grafico_vg = tabela_vg[tabela_vg["Situação_viagem"] != "Viagem concluída"]
@@ -300,4 +314,6 @@ st.plotly_chart(fig_cat, use_container_width=True)
 
 st.subheader("Tabela — Situação Categoria")
 st.dataframe(tabela_cat, use_container_width=True)
+
+
 
