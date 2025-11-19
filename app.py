@@ -297,10 +297,10 @@ tab_resumo, tab_sit_viagem, tab_sit_cat, tab_rankings = st.tabs(
 with tab_resumo:
     st.header("Adiantamento — Último Dia vs Referência (dia equivalente anterior)")
 
-    colunas = st.columns(3)
     limites = [3, 5, 10]
+    colunas = st.columns(len(limites))
 
-    # Determina o texto da referência
+    # Determina o texto da referência (janela de comparação)
     if tipo_dia_ult == "Domingo":
         tipo_janela = "domingo anterior"
     elif tipo_dia_ult == "Sábado":
@@ -308,14 +308,13 @@ with tab_resumo:
     else:
         tipo_janela = "média dos 5 dias úteis anteriores"
 
-    resumo_exec = []   # lista para armazenar os dados dos cartões
+    # Lista que será usada no resumo executivo
+    resumo_exec = []
 
-    # ---------------------------
-    # LOOP DOS GAUGES
-    # ---------------------------
+    # ---------------------- GAUGES ----------------------
     for idx, LIM in enumerate(limites):
         qtd_dia, pct_dia, qtd_media, pct_media = calcula_adiantamento(df_tipo, df_dia, LIM)
-        desvio_pct = pct_dia - pct_media
+        desvio = pct_dia - pct_media
 
         resumo_exec.append({
             "limite": LIM,
@@ -323,8 +322,8 @@ with tab_resumo:
             "pct_dia": pct_dia,
             "qtd_media": qtd_media,
             "pct_media": pct_media,
-            "desvio": desvio_pct,
-            "tipo_janela": tipo_janela
+            "desvio": desvio,
+            "tipo_janela": tipo_janela,
         })
 
         with colunas[idx]:
@@ -380,7 +379,8 @@ with tab_resumo:
 
         cor_desvio = "green" if desvio >= 0 else "red"
 
-        html_card = f"""
+        # IMPORTANTE: usar textwrap.dedent pra remover a indentação
+        html_card = textwrap.dedent(f"""
         <div style="background:#ffffff; border-radius:12px; padding:18px;
                     box-shadow:0 3px 8px rgba(0,0,0,0.12); font-family:Arial;">
             <h3 style="margin-top:0; margin-bottom:10px;">▶ {LIM} min</h3>
@@ -402,10 +402,9 @@ with tab_resumo:
                 <b>{desvio:+.2f} p.p.</b>
             </div>
         </div>
-        """
+        """)
 
         col.markdown(html_card, unsafe_allow_html=True)
-
 
 
 # ====================================================================================
@@ -595,6 +594,7 @@ with tab_rankings:
                 .sort_values("Qtd_ocorrências", ascending=False)
             )
             st.dataframe(rank_cat.head(15), use_container_width=True)
+
 
 
 
