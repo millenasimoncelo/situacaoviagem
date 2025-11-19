@@ -56,7 +56,12 @@ def carregar_dados_upload(arquivos):
         nome = arquivo.name.lower()
 
         if nome.endswith(".csv"):
-            df = pd.read_csv(arquivo, sep=",", encoding="utf-8", low_memory=False)
+            df = pd.read_csv(
+                arquivo,
+                sep=";",              # SEPARADOR CORRETO
+                encoding="utf-8-sig", # REMOVE BOM
+                low_memory=False
+            )
 
         elif nome.endswith(".xlsx"):
             df = pd.read_excel(arquivo)
@@ -69,7 +74,6 @@ def carregar_dados_upload(arquivos):
 
     return pd.concat(dfs, ignore_index=True)
 
-df = carregar_dados_upload(uploaded_files)
 
 # ------------------------------------------------------------------------------------
 # 📌 TRATAMENTO DAS COLUNAS BÁSICAS
@@ -314,6 +318,7 @@ st.plotly_chart(fig_cat, use_container_width=True)
 
 st.subheader("Tabela — Situação Categoria")
 st.dataframe(tabela_cat, use_container_width=True)
+
 
 
 
