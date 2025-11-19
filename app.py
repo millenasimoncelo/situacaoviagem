@@ -302,23 +302,19 @@ with tab_resumo:
 
     # Para determinar o texto da referência (dia equivalente)
     if tipo_dia_ult == "Domingo":
-        referencia_texto = "Domingo anterior"
-        tipo_janela = "dia equivalente anterior"
+        tipo_janela = "domingo anterior"
     elif tipo_dia_ult == "Sábado":
-        referencia_texto = "Sábado anterior"
-        tipo_janela = "dia equivalente anterior"
+        tipo_janela = "sábado anterior"
     else:
-        referencia_texto = "Média dos 5 dias úteis anteriores"
         tipo_janela = "média dos 5 dias úteis anteriores"
 
-    # Salvar dados para usar no Resumo Executivo
+    # Lista para armazenar os resultados
     resumo_exec = []
 
     for idx, LIM in enumerate(limites):
         qtd_dia, pct_dia, qtd_media, pct_media = calcula_adiantamento(df_tipo, df_dia, LIM)
         desvio_pct = pct_dia - pct_media
 
-        # Guardar no resumo executivo
         resumo_exec.append({
             "limite": LIM,
             "qtd_dia": qtd_dia,
@@ -329,9 +325,6 @@ with tab_resumo:
         })
 
         with colunas[idx]:
-            # ---------------------
-            # GAUGE
-            # ---------------------
             fig_gauge = go.Figure(
                 go.Indicator(
                     mode="gauge+number+delta",
@@ -346,69 +339,63 @@ with tab_resumo:
                     gauge={
                         "axis": {
                             "range": [0, max(10, pct_dia * 3, pct_media * 3)],
-                            "tickwidth": 1,
                         },
                         "bar": {"color": "#4CAF50"},
-                        "borderwidth": 2,
-                        "bgcolor": "white",
                     },
                 )
             )
-
             fig_gauge.update_layout(
                 title=f"Adiantadas > {LIM} min",
                 height=320,
                 margin=dict(l=10, r=10, t=70, b=10),
             )
-
             st.plotly_chart(fig_gauge, use_container_width=True)
 
-                # ====================================================================================
-                # RESUMO EXECUTIVO — MODELO 3 (caixinhas bonitas)
-                # ====================================================================================
-            
-                st.subheader("Resumo Executivo dos Adiantamentos")
-            
-                col1, col2, col3 = st.columns(3)
-                colunas_exec = [col1, col2, col3]
-            
-                for col, dados in zip(colunas_exec, resumo_exec):
-            
-                    LIM = dados["limite"]
-                    qtd_dia = dados["qtd_dia"]
-                    pct_dia = dados["pct_dia"]
-                    qtd_media = dados["qtd_media"]
-                    pct_media = dados["pct_media"]
-                    desvio = dados["desvio"]
-            
-                    cor_desvio = "green" if desvio >= 0 else "red"
-            
-                    html_card = f"""
-                    <div style="background:#ffffff; border-radius:12px; padding:18px;
-                                box-shadow:0 3px 8px rgba(0,0,0,0.12); font-family:Arial;">
-                        <h3 style="margin-top:0; margin-bottom:10px;">▶ {LIM} min</h3>
-            
-                        <div style="font-size:26px; font-weight:600; margin-bottom:6px;">
-                            {qtd_dia} viagens
-                        </div>
-            
-                        <div style="font-size:18px; color:#444;">
-                            📊 Último dia: <b>{pct_dia:.2f}%</b>
-                        </div>
-            
-                        <div style="font-size:16px; color:#666; margin-top:4px;">
-                            📅 Referência: <b>{pct_media:.2f}%</b><br/>
-                            <i>{tipo_janela}</i>
-                        </div>
-            
-                        <div style="font-size:18px; color:{cor_desvio}; margin-top:10px;">
-                            <b>{desvio:+.2f} p.p.</b>
-                        </div>
-                    </div>
-                    """
-            
-                    col.markdown(html_card, unsafe_allow_html=True)
+    # ====================================================================================
+    # RESUMO EXECUTIVO — MODELO 3 (caixinhas bonitas)
+    # ====================================================================================
 
+    st.subheader("Resumo Executivo dos Adiantamentos")
+
+    col1, col2, col3 = st.columns(3)
+    colunas_exec = [col1, col2, col3]
+
+    for col, dados in zip(colunas_exec, resumo_exec):
+
+        LIM = dados["limite"]
+        qtd_dia = dados["qtd_dia"]
+        pct_dia = dados["pct_dia"]
+        qtd_media = dados["qtd_media"]
+        pct_media = dados["pct_media"]
+        desvio = dados["desvio"]
+
+        cor_desvio = "green" if desvio >= 0 else "red"
+
+        html_card = f"""
+        <div style="background:#ffffff; border-radius:12px; padding:18px;
+                    box-shadow:0 3px 8px rgba(0,0,0,0.12); font-family:Arial;">
+            <h3 style="margin-top:0; margin-bottom:10px;">▶ {LIM} min</h3>
+
+            <div style="font-size:26px; font-weight:600; margin-bottom:6px;">
+                {qtd_dia} viagens
+            </div>
+
+            <div style="font-size:18px; color:#444;">
+                📊 Último dia: <b>{pct_dia:.2f}%</b>
+            </div>
+
+            <div style="font-size:16px; color:#666; margin-top:4px;">
+                📅 Referência: <b>{pct_media:.2f}%</b><br/>
+                <i>{tipo_janela}</i>
+            </div>
+
+            <div style="font-size:18px; color:{cor_desvio}; margin-top:10px;">
+                <b>{desvio:+.2f} p.p.</b>
+            </div>
+        </div>
+        """
+
+        col.markdown(html_card, unsafe_allow_html=True)
 
 
 # ====================================================================================
@@ -598,6 +585,7 @@ with tab_rankings:
                 .sort_values("Qtd_ocorrências", ascending=False)
             )
             st.dataframe(rank_cat.head(15), use_container_width=True)
+
 
 
 
