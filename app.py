@@ -300,7 +300,7 @@ with tab_resumo:
     colunas = st.columns(3)
     limites = [3, 5, 10]
 
-    # Para determinar o texto da referência (dia equivalente)
+    # Determina o texto da referência
     if tipo_dia_ult == "Domingo":
         tipo_janela = "domingo anterior"
     elif tipo_dia_ult == "Sábado":
@@ -308,8 +308,7 @@ with tab_resumo:
     else:
         tipo_janela = "média dos 5 dias úteis anteriores"
 
-    # Lista para armazenar os resultados
-    resumo_exec = []
+    resumo_exec = []   # ← lista vazia antes do loop
 
     for idx, LIM in enumerate(limites):
         qtd_dia, pct_dia, qtd_media, pct_media = calcula_adiantamento(df_tipo, df_dia, LIM)
@@ -322,6 +321,7 @@ with tab_resumo:
             "qtd_media": qtd_media,
             "pct_media": pct_media,
             "desvio": desvio_pct,
+            "tipo_janela": tipo_janela
         })
 
         with colunas[idx]:
@@ -339,20 +339,25 @@ with tab_resumo:
                     gauge={
                         "axis": {
                             "range": [0, max(10, pct_dia * 3, pct_media * 3)],
+                            "tickwidth": 1,
                         },
                         "bar": {"color": "#4CAF50"},
+                        "borderwidth": 2,
+                        "bgcolor": "white",
                     },
                 )
             )
+
             fig_gauge.update_layout(
                 title=f"Adiantadas > {LIM} min",
                 height=320,
                 margin=dict(l=10, r=10, t=70, b=10),
             )
+
             st.plotly_chart(fig_gauge, use_container_width=True)
 
     # ====================================================================================
-    # RESUMO EXECUTIVO — MODELO 3 (caixinhas bonitas)
+    # RESUMO EXECUTIVO — CAIXAS
     # ====================================================================================
 
     st.subheader("Resumo Executivo dos Adiantamentos")
@@ -368,6 +373,7 @@ with tab_resumo:
         qtd_media = dados["qtd_media"]
         pct_media = dados["pct_media"]
         desvio = dados["desvio"]
+        tipo_janela = dados["tipo_janela"]
 
         cor_desvio = "green" if desvio >= 0 else "red"
 
@@ -396,6 +402,7 @@ with tab_resumo:
         """
 
         col.markdown(html_card, unsafe_allow_html=True)
+
 
 
 # ====================================================================================
@@ -585,6 +592,7 @@ with tab_rankings:
                 .sort_values("Qtd_ocorrências", ascending=False)
             )
             st.dataframe(rank_cat.head(15), use_container_width=True)
+
 
 
 
