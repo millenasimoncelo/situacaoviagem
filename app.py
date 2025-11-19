@@ -310,14 +310,27 @@ with tab_resumo:
         referencia_texto = "Média dos 5 dias úteis anteriores"
         tipo_janela = "média dos 5 dias úteis anteriores"
 
-    # =====================================================================
-    # 📌 VELOCÍMETROS
-    # =====================================================================
+    # Salvar dados para usar no Resumo Executivo
+    resumo_exec = []
+
     for idx, LIM in enumerate(limites):
         qtd_dia, pct_dia, qtd_media, pct_media = calcula_adiantamento(df_tipo, df_dia, LIM)
         desvio_pct = pct_dia - pct_media
 
+        # Guardar no resumo executivo
+        resumo_exec.append({
+            "limite": LIM,
+            "qtd_dia": qtd_dia,
+            "pct_dia": pct_dia,
+            "qtd_media": qtd_media,
+            "pct_media": pct_media,
+            "desvio": desvio_pct,
+        })
+
         with colunas[idx]:
+            # ---------------------
+            # GAUGE
+            # ---------------------
             fig_gauge = go.Figure(
                 go.Indicator(
                     mode="gauge+number+delta",
@@ -349,58 +362,55 @@ with tab_resumo:
 
             st.plotly_chart(fig_gauge, use_container_width=True)
 
-    # ====================================================================================
-# RESUMO EXECUTIVO (3 CARDS BONITOS)
+# ====================================================================================
+# RESUMO EXECUTIVO — MODELO 3 (caixinhas bonitas)
 # ====================================================================================
 
 st.subheader("Resumo Executivo dos Adiantamentos")
-card_cols = st.columns(3)
 
-nomes_limites = {
-    3: "> 3 min",
-    5: "> 5 min",
-    10: "> 10 min"
-}
+col1, col2, col3 = st.columns(3)
 
-with st.container():
-    for idx, LIM in enumerate(limites):
-        qtd_dia, pct_dia, qtd_media, pct_media = calcula_adiantamento(df_tipo, df_dia, LIM)
-        desvio_pct = pct_dia - pct_media
-        variacao_cor = "green" if desvio_pct >= 0 else "red"
+colunas_exec = [col1, col2, col3]
 
-        with card_cols[idx]:
-            st.markdown(
-                f"""
-                <div style="
-                    border: 1px solid #DDD; 
-                    border-radius: 12px; 
-                    padding: 18px; 
-                    background: #FAFAFA;
-                    box-shadow: 0px 2px 5px rgba(0,0,0,0.05);
-                    ">
-                    
-                    <h3 style="margin-top:0;">{nomes_limites[LIM]}</h3>
+for col, dados in zip(colunas_exec, resumo_exec):
 
-                    <div style="font-size:28px; font-weight:600; margin-bottom:4px;">
-                        {qtd_dia} viagens
-                    </div>
+    LIM = dados["limite"]
+    qtd_dia = dados["qtd_dia"]
+    pct_dia = dados["pct_dia"]
+    qtd_media = dados["qtd_media"]
+    pct_media = dados["pct_media"]
+    desvio = dados["desvio"]
 
-                    <div style="font-size:20px; color:#444;">
-                        📊 Último dia: <b>{pct_dia:.2f}%</b>
-                    </div>
+    cor_desvio = "green" if desvio >= 0 else "red"
 
-                    <div style="font-size:18px; color:#666; margin-top:4px;">
-                        🧭 Referência (<i>{tipo_janela}</i>):  
-                        <b>{pct_media:.2f}%</b>
-                    </div>
+    html_card = f"""
+    <div style="background:#ffffff; border-radius:12px; padding:18px; 
+                box-shadow:0 3px 8px rgba(0,0,0,0.12); font-family:Arial;">
 
-                    <div style="font-size:20px; color:{variacao_cor}; margin-top:8px;">
-                        {desvio_pct:+.2f} p.p.
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
+        <h3 style="margin-top:0; margin-bottom:10px;">▶ {LIM} min</h3>
+
+        <div style="font-size:26px; font-weight:600; margin-bottom:6px;">
+            {qtd_dia} viagens
+        </div>
+
+        <div style="font-size:18px; color:#444;">
+            📊 Último dia: <b>{pct_dia:.2f}%</b>
+        </div>
+
+        <div style="font-size:16px; color:#666; margin-top:4px;">
+            📅 Referência: <b>{pct_media:.2f}%</b> 
+            <br>(<i>{tipo_janela}</i>)
+        </div>
+
+        <div style="font-size:18px; color:{cor_desvio}; margin-top:10px;">
+            <b>{desvio:+.2f} p.p.</b>
+        </div>
+
+    </div>
+    """
+
+    col.markdown(html_card, unsafe_allow_html=True)
+
 
 
 
@@ -592,6 +602,7 @@ with tab_rankings:
                 .sort_values("Qtd_ocorrências", ascending=False)
             )
             st.dataframe(rank_cat.head(15), use_container_width=True)
+
 
 
 
