@@ -294,7 +294,7 @@ tab_resumo, tab_sit_viagem, tab_sit_cat, tab_rankings = st.tabs(
 # ====================================================================================
 
 with tab_resumo:
-    st.header(f"Adiantamento das Viagens — Último Dia vs Média ({JANELA_DIAS} dias)")
+    st.header(f"Adiantamento — Último Dia vs Referência (dia equivalente anterior)")
     colunas = st.columns(3)
     limites = [3, 5, 10]
 
@@ -532,4 +532,5 @@ with tab_rankings:
                 .sort_values("Qtd_ocorrências", ascending=False)
             )
             st.dataframe(rank_cat.head(15), use_container_width=True)
+
 
