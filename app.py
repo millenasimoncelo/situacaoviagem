@@ -367,11 +367,7 @@ with tab_resumo:
 # RESUMO EXECUTIVO — MODELO 3 (caixinhas bonitas)
 # ====================================================================================
 
-# Força o Streamlit a reabilitar HTML após os charts
-st.markdown("", unsafe_allow_html=True)
-
 st.subheader("Resumo Executivo dos Adiantamentos")
-st.markdown("<br>", unsafe_allow_html=True)
 
 col1, col2, col3 = st.columns(3)
 colunas_exec = [col1, col2, col3]
@@ -388,31 +384,30 @@ for col, dados in zip(colunas_exec, resumo_exec):
     cor_desvio = "green" if desvio >= 0 else "red"
 
     html_card = f"""
-    <div style="background:#ffffff; border-radius:12px; padding:18px;
-                box-shadow:0 3px 8px rgba(0,0,0,0.12); font-family:Arial;">
-        <h3 style="margin-top:0; margin-bottom:10px;">▶ {LIM} min</h3>
+<div style="background:#ffffff; border-radius:12px; padding:18px;
+            box-shadow:0 3px 8px rgba(0,0,0,0.12); font-family:Arial;">
+    <h3 style="margin-top:0; margin-bottom:10px;">▶ {LIM} min</h3>
 
-        <div style="font-size:26px; font-weight:600; margin-bottom:6px;">
-            {qtd_dia} viagens
-        </div>
-
-        <div style="font-size:18px; color:#444;">
-            📊 Último dia: <b>{pct_dia:.2f}%</b>
-        </div>
-
-        <div style="font-size:16px; color:#666; margin-top:4px;">
-            📅 Referência: <b>{pct_media:.2f}%</b><br/>
-            <i>{tipo_janela}</i>
-        </div>
-
-        <div style="font-size:18px; color:{cor_desvio}; margin-top:10px;">
-            <b>{desvio:+.2f} p.p.</b>
-        </div>
+    <div style="font-size:26px; font-weight:600; margin-bottom:6px;">
+        {qtd_dia} viagens
     </div>
-    """
+
+    <div style="font-size:18px; color:#444;">
+        📊 Último dia: <b>{pct_dia:.2f}%</b>
+    </div>
+
+    <div style="font-size:16px; color:#666; margin-top:4px;">
+        📅 Referência: <b>{pct_media:.2f}%</b><br/>
+        <i>{tipo_janela}</i>
+    </div>
+
+    <div style="font-size:18px; color:{cor_desvio}; margin-top:10px;">
+        <b>{desvio:+.2f} p.p.</b>
+    </div>
+</div>
+"""
 
     col.markdown(html_card, unsafe_allow_html=True)
-
 
 
 # ====================================================================================
@@ -602,6 +597,7 @@ with tab_rankings:
                 .sort_values("Qtd_ocorrências", ascending=False)
             )
             st.dataframe(rank_cat.head(15), use_container_width=True)
+
 
 
 
