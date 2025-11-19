@@ -359,7 +359,7 @@ st.markdown(
 # ====================================================================================
 
 with tab_sit_viagem:
-    st.header(f"Situação da Viagem — Último Dia vs Média ({JANELA_DIAS} dias)")
+    st.header("Situação da Viagem — Último Dia vs Referência (dia equivalente anterior)")
 
     tab_ult = df_dia.groupby("Situação_viagem").size().reset_index(name="Qtd Último Dia")
     tab_tipo = df_tipo.groupby("Situação_viagem").size().reset_index(name="Qtd Média TipoDia")
@@ -406,7 +406,7 @@ with tab_sit_viagem:
 # ====================================================================================
 
 with tab_sit_cat:
-    st.header(f"Situação Categoria — Último Dia vs Média ({JANELA_DIAS} dias)")
+    st.header("Situação categoria — Último Dia vs Referência (dia equivalente anterior)")
 
     tab_cat_ult = df_dia.groupby("Situação_categoria").size().reset_index(name="Qtd Último Dia")
     tab_cat_tipo = df_tipo.groupby("Situação_categoria").size().reset_index(name="Qtd Média TipoDia")
@@ -541,6 +541,7 @@ with tab_rankings:
                 .sort_values("Qtd_ocorrências", ascending=False)
             )
             st.dataframe(rank_cat.head(15), use_container_width=True)
+
 
 
 
