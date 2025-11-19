@@ -295,14 +295,29 @@ tab_resumo, tab_sit_viagem, tab_sit_cat, tab_rankings = st.tabs(
 
 with tab_resumo:
     st.header(f"Adiantamento — Último Dia vs Referência (dia equivalente anterior)")
+
     colunas = st.columns(3)
     limites = [3, 5, 10]
 
+    # Para determinar o texto da referência (dia equivalente)
+    if tipo_dia_ult == "Domingo":
+        referencia_texto = "Domingo anterior"
+        tipo_janela = "dia equivalente anterior"
+    elif tipo_dia_ult == "Sábado":
+        referencia_texto = "Sábado anterior"
+        tipo_janela = "dia equivalente anterior"
+    else:
+        referencia_texto = "Média dos 5 dias úteis anteriores"
+        tipo_janela = "média dos 5 dias úteis anteriores"
+
     for idx, LIM in enumerate(limites):
         qtd_dia, pct_dia, qtd_media, pct_media = calcula_adiantamento(df_tipo, df_dia, LIM)
-        desvio = pct_dia - pct_media
+        desvio_pct = pct_dia - pct_media
 
         with colunas[idx]:
+            # ---------------------
+            # GAUGE
+            # ---------------------
             fig_gauge = go.Figure(
                 go.Indicator(
                     mode="gauge+number+delta",
@@ -334,24 +349,25 @@ with tab_resumo:
 
             st.plotly_chart(fig_gauge, use_container_width=True)
 
-# Texto explicativo abaixo do velocímetro
-if tipo_dia_ult == "Domingo":
-    referencia_texto = "Domingo anterior"
-elif tipo_dia_ult == "Sábado":
-    referencia_texto = "Sábado anterior"
-else:
-    referencia_texto = "Média dos 5 dias úteis anteriores"
+            # ---------------------
+            # TEXTO EXPLICATIVO INDIVIDUAL
+            # ---------------------
+            variacao_pct = f"{desvio_pct:+.2f} p.p."
+            variacao_viagens = qtd_dia - qtd_media
 
-st.markdown(
-    f"""
-    <div style="text-align:center; font-size:18px; margin-top:-12px;">
-        Último dia: <b>{qtd_dia}</b> viagens ({pct_dia:.2f}%) • 
-        {referencia_texto}: <b>{pct_media:.2f}%</b> 
-        ({'+' if desvio >= 0 else ''}{desvio:.2f} p.p.)
-    </div>
-    """,
-    unsafe_allow_html=True
-)
+            st.markdown(
+                f"""
+                <div style="text-align:center; font-size:16px; margin-top:-12px;">
+                    Ocorreram <b>{qtd_dia}</b> viagens com adiantamento superior a 
+                    <b>{LIM} minutos</b> no último dia, representando 
+                    <b>{pct_dia:.2f}%</b> das viagens. <br>
+                    No período de referência (<i>{tipo_janela}</i>), a média foi de 
+                    <b>{qtd_media:.0f}</b> viagens (<b>{pct_media:.2f}%</b>). <br>
+                    Variação: <b>{variacao_pct}</b>.
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
 
 
 # ====================================================================================
@@ -541,6 +557,7 @@ with tab_rankings:
                 .sort_values("Qtd_ocorrências", ascending=False)
             )
             st.dataframe(rank_cat.head(15), use_container_width=True)
+
 
 
 
