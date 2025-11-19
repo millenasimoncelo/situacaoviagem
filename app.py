@@ -309,45 +309,59 @@ with tab_resumo:
             st.plotly_chart(fig_gauge, use_container_width=True)
 
     # ====================================================================================
-    # RESUMO EXECUTIVO
+    # RESUMO EXECUTIVO — CAIXAS (VERSÃO FINAL)
     # ====================================================================================
-
+    
     st.subheader("Resumo Executivo dos Adiantamentos")
-
+    
     col1, col2, col3 = st.columns(3)
-
-    colunas_cards = [col1, col2, col3]
-
-    for col, reg in zip(colunas_cards, resumo_exec):
-
-        LIM = reg["limite"]
-        qtd_dia = reg["qtd_dia"]
-        pct_dia = reg["pct_dia"]
-        pct_media = reg["pct_media"]
-        desvio = reg["desvio"]
-        tipo_janela = reg["tipo_janela"]
-
-        cor = "green" if desvio >= 0 else "red"
-
-        card = textwrap.dedent(f"""
-            <div style="background:white; border-radius:12px; padding:18px;
-                        box-shadow:0 3px 8px rgba(0,0,0,0.15);">
-                <h3>▶ {LIM} min</h3>
-                <p style="font-size:24px; font-weight:600;">{qtd_dia} viagens</p>
-
-                <p>📊 Último dia: <b>{pct_dia:.2f}%</b></p>
-                <p>📅 Referência: <b>{pct_media:.2f}%</b> ({tipo_janela})</p>
-
-                <p style="color:{cor}; font-size:20px;">
-                    <b>{desvio:+.2f} p.p.</b>
-                </p>
+    colunas_exec = [col1, col2, col3]
+    
+    for col, dados in zip(colunas_exec, resumo_exec):
+    
+        LIM = dados["limite"]
+        qtd_dia = dados["qtd_dia"]
+        pct_dia = dados["pct_dia"]
+        qtd_media = dados["qtd_media"]
+        pct_media = dados["pct_media"]
+        desvio = dados["desvio"]
+        tipo_janela = dados["tipo_janela"]
+    
+        cor_desvio = "green" if desvio >= 0 else "red"
+    
+        html_card = f"""
+        <div style="background:#ffffff; border-radius:12px; padding:18px;
+                    box-shadow:0 3px 8px rgba(0,0,0,0.12); font-family:Arial;">
+    
+            <h3 style="margin-top:0; margin-bottom:10px;">
+                ▶ {LIM} min
+            </h3>
+    
+            <div style="font-size:26px; font-weight:600; margin-bottom:6px;">
+                {qtd_dia} viagens
             </div>
-        """)
+    
+            <div style="font-size:18px; color:#444;">
+                📊 Último dia: <b>{pct_dia:.2f}%</b>
+            </div>
+    
+            <div style="font-size:16px; color:#666; margin-top:4px;">
+                📅 Referência: <b>{pct_media:.2f}%</b><br/>
+                <i>{tipo_janela}</i>
+            </div>
+    
+            <div style="font-size:18px; color:{cor_desvio}; margin-top:10px;">
+                <b>{desvio:+.2f} p.p.</b>
+            </div>
+        </div>
+        """
+    
+        col.markdown(html_card, unsafe_allow_html=True)
 
-        col.markdown(card, unsafe_allow_html=True)
 
 # ====================================================================================
 # AS DEMAIS ABAS (Viagem / Categoria / Rankings)
 # ====================================================================================
 
 # (todo o seu código das outras abas permanece como estava — não precisa alterar)
+
