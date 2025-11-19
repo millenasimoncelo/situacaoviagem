@@ -295,7 +295,7 @@ tab_resumo, tab_sit_viagem, tab_sit_cat, tab_rankings = st.tabs(
 # ====================================================================================
 
 with tab_resumo:
-    st.header(f"Adiantamento — Último Dia vs Referência (dia equivalente anterior)")
+    st.header("Adiantamento — Último Dia vs Referência (dia equivalente anterior)")
 
     colunas = st.columns(3)
     limites = [3, 5, 10]
@@ -308,8 +308,11 @@ with tab_resumo:
     else:
         tipo_janela = "média dos 5 dias úteis anteriores"
 
-    resumo_exec = []   # ← lista vazia antes do loop
+    resumo_exec = []   # lista para armazenar os dados dos cartões
 
+    # ---------------------------
+    # LOOP DOS GAUGES
+    # ---------------------------
     for idx, LIM in enumerate(limites):
         qtd_dia, pct_dia, qtd_media, pct_media = calcula_adiantamento(df_tipo, df_dia, LIM)
         desvio_pct = pct_dia - pct_media
@@ -592,6 +595,7 @@ with tab_rankings:
                 .sort_values("Qtd_ocorrências", ascending=False)
             )
             st.dataframe(rank_cat.head(15), use_container_width=True)
+
 
 
 
