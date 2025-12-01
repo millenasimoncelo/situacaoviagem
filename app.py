@@ -1,5 +1,5 @@
 # ====================================================================================
-# PAINEL DE CATEGORIZAÇÃO DE VIAGENS — VERSÃO COM UPLOAD, ABAS, RANKING E HEATMAP
+# PAINEL DE CATEGORIZAÇÃO DE VIAGENS — VERSÃO COM UPLOAD, ABAS, SISTEMA E RANKINGS
 # ====================================================================================
 
 import os
@@ -8,6 +8,9 @@ import numpy as np
 import streamlit as st
 import plotly.graph_objects as go
 import plotly.express as px
+
+# janela usada APENAS para ranking (últimos N dias)
+JANELA_RANK_DIAS = 7
 
 # ------------------------------------------------------------------------------------
 # BLOCO 1 — CONFIGURAÇÃO INICIAL DO STREAMLIT
@@ -32,7 +35,6 @@ def carregar_dados_upload(arquivos):
         nome = arquivo.name.lower()
 
         if nome.endswith(".csv"):
-            # CSV real: separador ; e UTF-8 com BOM
             df_arq = pd.read_csv(
                 arquivo,
                 sep=";",
@@ -77,7 +79,7 @@ df = carregar_dados_upload(uploaded_files)
 df = df.rename(columns=lambda x: str(x).strip().replace(" ", "_"))
 
 # ------------------------------------------------------------------------------------
-# BLOCO 4 — FUNÇÃO PARA CLASSIFICAR TIPO DE DIA
+# BLOCO 4 — FUNÇÕES AUXILIARES
 # ------------------------------------------------------------------------------------
 
 def classificar_tipo_dia(ts):
@@ -92,6 +94,73 @@ def classificar_tipo_dia(ts):
         return "Domingo"
 
 
+def formato_br_num(v, casas=0):
+    """Formata número no padrão PT-BR."""
+    if pd.isna(v):
+        return ""
+    if casas == 0:
+        s = f"{v:,.0f}"
+    else:
+        s = f"{v:,.{casas}f}"
+    s = s.replace(",", "X").replace(".", ",").replace("X", ".")
+    return s
+
+
+def tabela_semáforo(df_tab, colunas_pct, titulo=None):
+    """
+    Mostra DataFrame com gradiente em vermelho nas colunas de percentual
+    e formatação de números no padrão BR.
+    (Requer matplotlib instalado no ambiente por causa do background_gradient.)
+    """
+    if titulo:
+        st.subheader(titulo)
+    if df_tab.empty:
+        st.info("Sem dados para exibir nesta tabela.")
+        return
+
+    fmt_funcs = {}
+
+    # Percentuais com 2 casas
+    for c in colunas_pct:
+        def fmt_pct(v, col=c):
+            if pd.isna(v):
+                return ""
+            return formato_br_num(v, casas=2) + " %"
+        fmt_funcs[c] = fmt_pct
+
+    # Se existir coluna 'Total', formatar com milhar
+    if "Total" in df_tab.columns:
+        def fmt_total(v):
+            return formato_br_num(v, casas=0)
+        fmt_funcs["Total"] = fmt_total
+
+    styler = (
+        df_tab.style
+        .format(fmt_funcs)
+        .background_gradient(cmap="Reds", subset=colunas_pct)
+    )
+
+    st.dataframe(styler, use_container_width=True)
+
+
+def calcula_adiantamento_equiv(df_base, df_dia, limite):
+    """
+    Cálculo do adiantamento para:
+    - df_dia  : último dia
+    - df_base : dias equivalentes anteriores
+    """
+    if len(df_dia) == 0 or len(df_base) == 0:
+        return 0, 0.0, 0.0
+
+    qtd_dia = (df_dia["Adiantamento_min"] > limite).sum()
+    pct_dia = qtd_dia / len(df_dia) * 100 if len(df_dia) > 0 else 0.0
+
+    qtd_base = (df_base["Adiantamento_min"] > limite).sum()
+    pct_base = qtd_base / len(df_base) * 100 if len(df_base) > 0 else 0.0
+
+    return qtd_dia, pct_dia, pct_base
+
+
 # ------------------------------------------------------------------------------------
 # BLOCO 5 — TRATAMENTO DAS COLUNAS BÁSICAS
 # ------------------------------------------------------------------------------------
@@ -101,6 +170,7 @@ colunas_necessarias = [
     "Horário_realizado",
     "Situação_viagem",
     "Situação_categoria",
+    "Empresa"
 ]
 
 for c in colunas_necessarias:
@@ -119,6 +189,13 @@ df["Horário_realizado"] = pd.to_datetime(df["Horário_realizado"], errors="coer
 
 # Tipo de dia
 df["Tipo_Dia"] = df["Data_Agendada"].apply(classificar_tipo_dia)
+
+# CRIAÇÃO DO CAMPO SISTEMA (Transcol x Aquaviário)
+df["Sistema"] = np.where(
+    df["Empresa"].str.contains("VJB", case=False, na=False),
+    "Aquaviário",
+    "Transcol"
+)
 
 # ------------------------------------------------------------------------------------
 # BLOCO 6 — CRIAÇÃO DA FAIXA HORÁRIA
@@ -147,100 +224,106 @@ df["Adianta_10"] = df["Adiantamento_min"] > 10
 
 st.sidebar.header("Filtros")
 
+# Sistema (Transcol x Aquaviário)
+sistema_sel = st.sidebar.radio("Sistema", ["Transcol", "Aquaviário"], index=0)
+
+df_sistema = df[df["Sistema"] == sistema_sel].copy()
+
+if df_sistema.empty:
+    st.warning("Não há dados para o sistema selecionado.")
+    st.stop()
+
 # Empresa
-if "Empresa" in df.columns:
-    empresas = sorted(df["Empresa"].dropna().unique())
+if "Empresa" in df_sistema.columns:
+    empresas = sorted(df_sistema["Empresa"].dropna().unique())
     empresas_sel = st.sidebar.multiselect("Empresa", empresas, default=empresas)
 else:
     empresas_sel = []
 
-# Linha
-if "Linha" in df.columns:
-    linhas = sorted(df["Linha"].dropna().unique())
+# Linha (se existir)
+if "Linha" in df_sistema.columns:
+    linhas = sorted(df_sistema["Linha"].dropna().unique())
     linhas_sel = st.sidebar.multiselect("Linha", linhas, default=linhas)
 else:
     linhas_sel = []
 
 # Faixa horária
-faixas = sorted(df["Faixa_Horaria"].dropna().unique())
+faixas = sorted(df_sistema["Faixa_Horaria"].dropna().unique())
 faixas_sel = st.sidebar.multiselect(
-    "Faixa Horária (Horário agendado)", faixas, default=faixas
+    "Faixa Horária (Horário agendado)",
+    faixas,
+    default=faixas
 )
 
-mask = pd.Series(True, index=df.index)
+mask = pd.Series(True, index=df_sistema.index)
 
-if empresas_sel and "Empresa" in df.columns:
-    mask &= df["Empresa"].isin(empresas_sel)
+if empresas_sel and "Empresa" in df_sistema.columns:
+    mask &= df_sistema["Empresa"].isin(empresas_sel)
 
-if linhas_sel and "Linha" in df.columns:
-    mask &= df["Linha"].isin(linhas_sel)
+if linhas_sel and "Linha" in df_sistema.columns:
+    mask &= df_sistema["Linha"].isin(linhas_sel)
 
 if faixas_sel:
-    mask &= df["Faixa_Horaria"].isin(faixas_sel)
+    mask &= df_sistema["Faixa_Horaria"].isin(faixas_sel)
 
-df_filtro = df[mask].copy()
+df_filtro = df_sistema[mask].copy()
 
 if df_filtro.empty:
     st.warning("Nenhum dado encontrado com os filtros selecionados.")
     st.stop()
 
 # ------------------------------------------------------------------------------------
-# BLOCO 9 — PREPARAÇÃO: ÚLTIMO DIA E JANELA DE 7 DIAS (REGRA ESPECIAL)
+# BLOCO 9 — PREPARAÇÃO: ÚLTIMO DIA E DIAS EQUIVALENTES ANTERIORES
 # ------------------------------------------------------------------------------------
 
-df_filtro["Data_Agendada"] = pd.to_datetime(df_filtro["Data_Agendada"], errors="coerce")
+df_filtro["Data_Agendada"] = pd.to_datetime(
+    df_filtro["Data_Agendada"], errors="coerce"
+).dt.normalize()
 
 if df_filtro["Data_Agendada"].notna().sum() == 0:
     st.error("Não foi possível identificar datas válidas em Data_Agendada.")
     st.stop()
 
 ultimo_dia = df_filtro["Data_Agendada"].max()
-df_dia = df_filtro[df_filtro["Data_Agendada"] == ultimo_dia]
+df_ultimo = df_filtro[df_filtro["Data_Agendada"] == ultimo_dia]
 
-JANELA_DIAS = 7
-limite_data = ultimo_dia - pd.Timedelta(days=JANELA_DIAS)
-df_janela = df_filtro[df_filtro["Data_Agendada"] >= limite_data]
+if df_ultimo.empty:
+    st.error("Não há registros para o último dia encontrado.")
+    st.stop()
 
-tipo_dia_ult = df_dia["Tipo_Dia"].iloc[0]
-df_tipo = df_janela[df_janela["Tipo_Dia"] == tipo_dia_ult]
+tipo_dia_ult = df_ultimo["Tipo_Dia"].iloc[0]
 
-# número de dias distintos dessa janela para esse tipo de dia
-n_dias_tipo = df_tipo["Data_Agendada"].nunique()
+# Histórico (apenas datas ANTES do último dia)
+df_hist = df_filtro[df_filtro["Data_Agendada"] < ultimo_dia].copy()
 
-# ------------------------------------------------------------------------------------
-# BLOCO 10 — FUNÇÕES AUXILIARES (ADIANTAMENTO, SEMÁFORO, ETC.)
-# ------------------------------------------------------------------------------------
+if df_hist.empty:
+    # caso limite: só há dados do último dia
+    df_base_equiv = df_hist.iloc[0:0].copy()  # vazio com mesmas colunas
+else:
+    if tipo_dia_ult == "Domingo":
+        n_dias = 1
+    elif tipo_dia_ult == "Sábado":
+        n_dias = 1
+    else:  # Dia útil
+        n_dias = 5
 
-def calcula_adiantamento(df_base, df_dia, limite):
-    """Retorna: qtd_dia, pct_dia, qtd_media, pct_media."""
-    if len(df_dia) == 0 or len(df_base) == 0:
-        return 0, 0.0, 0.0, 0.0
-
-    qtd_dia = (df_dia["Adiantamento_min"] > limite).sum()
-    pct_dia = qtd_dia / len(df_dia) * 100
-
-    qtd_media = (df_base["Adiantamento_min"] > limite).sum()
-    pct_media = qtd_media / len(df_base) * 100
-
-    return qtd_dia, pct_dia, qtd_media, pct_media
-
-
-def tabela_semáforo(df_tab, colunas_pct, titulo=None):
-    """Mostra DataFrame com gradiente em vermelho nas colunas de percentual."""
-    if titulo:
-        st.subheader(titulo)
-    if df_tab.empty:
-        st.info("Sem dados para exibir nesta tabela.")
-        return
-
-    fmt = {col: "{:.2f}%" for col in colunas_pct}
-    styler = (
-        df_tab.style
-        .format(fmt)
-        .background_gradient(cmap="Reds", subset=colunas_pct)
+    datas_equiv = (
+        df_hist.loc[df_hist["Tipo_Dia"] == tipo_dia_ult, "Data_Agendada"]
+        .drop_duplicates()
+        .sort_values(ascending=False)
+        .head(n_dias)
     )
-    st.dataframe(styler, use_container_width=True)
 
+    df_base_equiv = df_filtro[df_filtro["Data_Agendada"].isin(datas_equiv)].copy()
+
+# ------------------------------------------------------------------------------------
+# BLOCO 10 — PREPARAÇÃO ESPECÍFICA PARA RANKING (ÚLTIMOS 7 DIAS)
+# ------------------------------------------------------------------------------------
+
+inicio_rank = ultimo_dia - pd.Timedelta(days=JANELA_RANK_DIAS - 1)
+df_rank_janela = df_filtro[
+    (df_filtro["Data_Agendada"] >= inicio_rank) & (df_filtro["Data_Agendada"] <= ultimo_dia)
+].copy()
 
 # ====================================================================================
 # BLOCO 11 — ABAS
@@ -251,7 +334,7 @@ aba1, aba2, aba3, aba4 = st.tabs(
         "Adiantamento (Velocímetros)",
         "Situação da Viagem",
         "Situação Categoria",
-        "Ranking & Heatmap de Empresas",
+        "Ranking de Empresas",
     ]
 )
 
@@ -260,16 +343,17 @@ aba1, aba2, aba3, aba4 = st.tabs(
 # ====================================================================================
 
 with aba1:
-    st.header(f"Adiantamento das Viagens — Último Dia vs Média ({JANELA_DIAS} dias)")
+    st.header("Adiantamento das Viagens — Último dia vs dias equivalentes anteriores")
+    st.caption(f"Sistema selecionado: {sistema_sel}")
 
     colunas = st.columns(3)
     limites = [3, 5, 10]
 
+    tipo_label = tipo_dia_ult.lower()
+
     for idx, LIM in enumerate(limites):
-        qtd_dia, pct_dia, qtd_media, pct_media = calcula_adiantamento(
-            df_tipo, df_dia, LIM
-        )
-        desvio = pct_dia - pct_media
+        qtd_dia, pct_dia, pct_base = calcula_adiantamento_equiv(df_base_equiv, df_ultimo, LIM)
+        desvio = pct_dia - pct_base
 
         with colunas[idx]:
             fig_gauge = go.Figure(
@@ -277,7 +361,7 @@ with aba1:
                     mode="gauge+number+delta",
                     value=pct_dia,
                     delta={
-                        "reference": pct_media,
+                        "reference": pct_base,
                         "valueformat": ".2f",
                         "increasing.color": "green",
                         "decreasing.color": "red",
@@ -285,8 +369,8 @@ with aba1:
                     number={"suffix": "%", "font": {"size": 40}},
                     gauge={
                         "axis": {
-                            "range": [0, max(10, pct_dia * 3, pct_media * 3)],
-                            "tickwidth": 1,
+                            "range": [0, max(10, pct_dia * 3, pct_base * 3, 5)],
+                            "tickwidth": 1
                         },
                         "bar": {"color": "#4CAF50"},
                         "borderwidth": 2,
@@ -298,7 +382,7 @@ with aba1:
             fig_gauge.update_layout(
                 title=f"Adiantadas > {LIM} min",
                 height=320,
-                margin=dict(l=10, r=10, t=70, b=10),
+                margin=dict(l=10, r=10, t=70, b=10)
             )
 
             st.plotly_chart(fig_gauge, use_container_width=True)
@@ -307,11 +391,11 @@ with aba1:
                 f"""
                 <div style="text-align:center; font-size:16px; margin-top:-12px;">
                 Último dia: <b>{qtd_dia}</b> viagens ({pct_dia:.2f}%) • 
-                Média {tipo_dia_ult.lower()} (últimos {JANELA_DIAS} dias, {n_dias_tipo} dia(s) desse tipo): 
-                <b>{pct_media:.2f}%</b> ({'+' if desvio>=0 else ''}{desvio:.2f} p.p.)
+                Média de dias equivalentes ({tipo_label}): <b>{pct_base:.2f}%</b> 
+                ({'+' if desvio>=0 else ''}{desvio:.2f} p.p.)
                 </div>
                 """,
-                unsafe_allow_html=True,
+                unsafe_allow_html=True
             )
 
 # ====================================================================================
@@ -319,43 +403,54 @@ with aba1:
 # ====================================================================================
 
 with aba2:
-    st.header(f"Situação da Viagem — Último Dia vs Média ({JANELA_DIAS} dias)")
+    st.header("Situação da Viagem — Último dia vs dias equivalentes anteriores")
+    st.caption(f"Sistema selecionado: {sistema_sel}")
 
-    tab_ult = df_dia.groupby("Situação_viagem").size().reset_index(name="Qtd Último Dia")
-    tab_tipo = df_tipo.groupby("Situação_viagem").size().reset_index(name="Qtd Média TipoDia")
+    # Tabelas base
+    tab_ult = df_ultimo.groupby("Situação_viagem").size().reset_index(name="Qtd Último Dia")
 
-    tabela_vg = tab_ult.merge(tab_tipo, on="Situação_viagem", how="outer").fillna(0)
+    if df_base_equiv.empty:
+        tab_base = tab_ult.copy()
+        tab_base["Qtd Base Dias Equivalentes"] = 0
+        tab_base = tab_base[["Situação_viagem", "Qtd Base Dias Equivalentes"]]
+    else:
+        tab_base = (
+            df_base_equiv.groupby("Situação_viagem")
+            .size()
+            .reset_index(name="Qtd Base Dias Equivalentes")
+        )
+
+    tabela_vg = tab_ult.merge(tab_base, on="Situação_viagem", how="outer").fillna(0)
 
     soma_ult = tabela_vg["Qtd Último Dia"].sum()
-    soma_tipo = tabela_vg["Qtd Média TipoDia"].sum()
+    soma_base = tabela_vg["Qtd Base Dias Equivalentes"].sum()
 
     tabela_vg["% Último Dia"] = (
         tabela_vg["Qtd Último Dia"] / soma_ult * 100 if soma_ult > 0 else 0
     )
-    tabela_vg["% Média TipoDia"] = (
-        tabela_vg["Qtd Média TipoDia"] / soma_tipo * 100 if soma_tipo > 0 else 0
+    tabela_vg["% Dias Equivalentes"] = (
+        tabela_vg["Qtd Base Dias Equivalentes"] / soma_base * 100 if soma_base > 0 else 0
     )
-    tabela_vg["Desvio (p.p.)"] = tabela_vg["% Último Dia"] - tabela_vg["% Média TipoDia"]
+    tabela_vg["Desvio (p.p.)"] = tabela_vg["% Último Dia"] - tabela_vg["% Dias Equivalentes"]
 
-    grafico_vg = tabela_vg[tabela_vg["Situação_viagem"] != "Viagem concluída"]
+    # Gráfico SEM "Viagem concluída"
+    grafico_vg = tabela_vg.copy()
+    sv_norm = grafico_vg["Situação_viagem"].astype(str).str.strip().str.lower()
+    grafico_vg = grafico_vg[~sv_norm.isin(["viagem concluída", "viagem concluida"])]
 
     fig_vg = px.bar(
         grafico_vg,
         x="Situação_viagem",
-        y=["% Média TipoDia", "% Último Dia"],
+        y=["% Dias Equivalentes", "% Último Dia"],
         barmode="group",
         labels={"value": "% das viagens", "Situação_viagem": "Situação"},
-        height=450,
+        height=450
     )
-    fig_vg.update_layout(
-        title=(
-            "Situação da Viagem — Comparação (sem 'Viagem concluída') "
-            f"[{n_dias_tipo} dia(s) desse tipo na janela]"
-        )
-    )
+    fig_vg.update_layout(title="Situação da Viagem — Comparação (sem 'Viagem concluída')")
 
     st.plotly_chart(fig_vg, use_container_width=True)
 
+    # Tabela completa
     st.subheader("Tabela — Situação da Viagem (inclui 'Viagem concluída')")
     st.dataframe(tabela_vg, use_container_width=True)
 
@@ -364,155 +459,139 @@ with aba2:
 # ====================================================================================
 
 with aba3:
-    st.header(f"Situação Categoria — Último Dia vs Média ({JANELA_DIAS} dias)")
+    st.header("Situação Categoria — Último dia vs dias equivalentes anteriores")
+    st.caption(f"Sistema selecionado: {sistema_sel}")
 
-    tab_cat_ult = (
-        df_dia.groupby("Situação_categoria").size().reset_index(name="Qtd Último Dia")
-    )
-    tab_cat_tipo = (
-        df_tipo.groupby("Situação_categoria").size().reset_index(name="Qtd Média TipoDia")
-    )
+    tab_cat_ult = df_ultimo.groupby("Situação_categoria").size().reset_index(name="Qtd Último Dia")
 
-    tabela_cat = tab_cat_ult.merge(tab_cat_tipo, on="Situação_categoria", how="outer").fillna(0)
+    if df_base_equiv.empty:
+        tab_cat_base = tab_cat_ult.copy()
+        tab_cat_base["Qtd Base Dias Equivalentes"] = 0
+        tab_cat_base = tab_cat_base[["Situação_categoria", "Qtd Base Dias Equivalentes"]]
+    else:
+        tab_cat_base = (
+            df_base_equiv.groupby("Situação_categoria")
+            .size()
+            .reset_index(name="Qtd Base Dias Equivalentes")
+        )
+
+    tabela_cat = tab_cat_ult.merge(tab_cat_base, on="Situação_categoria", how="outer").fillna(0)
 
     soma_cat_ult = tabela_cat["Qtd Último Dia"].sum()
-    soma_cat_tipo = tabela_cat["Qtd Média TipoDia"].sum()
+    soma_cat_base = tabela_cat["Qtd Base Dias Equivalentes"].sum()
 
     tabela_cat["% Último Dia"] = (
         tabela_cat["Qtd Último Dia"] / soma_cat_ult * 100 if soma_cat_ult > 0 else 0
     )
-    tabela_cat["% Média TipoDia"] = (
-        tabela_cat["Qtd Média TipoDia"] / soma_cat_tipo * 100 if soma_cat_tipo > 0 else 0
+    tabela_cat["% Dias Equivalentes"] = (
+        tabela_cat["Qtd Base Dias Equivalentes"] / soma_cat_base * 100 if soma_cat_base > 0 else 0
     )
-    tabela_cat["Desvio (p.p.)"] = tabela_cat["% Último Dia"] - tabela_cat["% Média TipoDia"]
+    tabela_cat["Desvio (p.p.)"] = tabela_cat["% Último Dia"] - tabela_cat["% Dias Equivalentes"]
 
+    # Gráfico primeiro
     fig_cat = px.bar(
         tabela_cat,
         x="Situação_categoria",
-        y=["% Média TipoDia", "% Último Dia"],
+        y=["% Dias Equivalentes", "% Último Dia"],
         barmode="group",
         labels={"value": "% das viagens", "Situação_categoria": "Categoria"},
-        height=450,
+        height=450
     )
-    fig_cat.update_layout(
-        title=(
-            "Situação Categoria — Comparação "
-            f"[{n_dias_tipo} dia(s) desse tipo na janela]"
-        )
-    )
+    fig_cat.update_layout(title="Situação Categoria — Comparação")
     st.plotly_chart(fig_cat, use_container_width=True)
 
+    # Tabela abaixo
     st.subheader("Tabela — Situação Categoria")
     st.dataframe(tabela_cat, use_container_width=True)
 
 # ====================================================================================
-# BLOCO 15 — ABA 4: RANKING DE EMPRESAS + HEATMAP
+# BLOCO 15 — ABA 4: RANKING DE EMPRESAS (ÚLTIMOS 7 DIAS)
 # ====================================================================================
 
 with aba4:
-    st.header(f"Ranking de Empresas — Últimos {JANELA_DIAS} dias (filtros aplicados)")
+    st.header(f"Ranking de Empresas — Últimos {JANELA_RANK_DIAS} dias (filtros aplicados)")
+    st.caption(f"Sistema selecionado: {sistema_sel}")
 
-    if "Empresa" not in df_filtro.columns:
-        st.info("A coluna 'Empresa' não existe na base. Ranking e heatmap não podem ser gerados.")
+    if "Empresa" not in df_rank_janela.columns:
+        st.info("A coluna 'Empresa' não existe na base. Ranking não pode ser gerado.")
     else:
-        df_rank = df_janela.copy()
-
+        df_rank = df_rank_janela.copy()
         if df_rank.empty:
-            st.info("Não há dados na janela de 7 dias para os filtros selecionados.")
+            st.info("Não há dados na janela de dias selecionada para os filtros atuais.")
         else:
             # ------------------- RANKING 1 — ADIANTAMENTO -------------------
             st.markdown("### Ranking 1 — Adiantamento (>3, >5, >10 minutos)")
 
-            grp = df_rank.groupby("Empresa", as_index=False).agg(
+            grp = df_rank.groupby("Empresa")
+            resumo1 = grp.agg(
                 Total=("Empresa", "size"),
                 Adianta3=("Adianta_3", "sum"),
                 Adianta5=("Adianta_5", "sum"),
                 Adianta10=("Adianta_10", "sum"),
-            )
+            ).reset_index()
 
-            # nomes de colunas de percentual padronizados
-            grp["% > 3 min"] = np.where(
-                grp["Total"] > 0, grp["Adianta3"] / grp["Total"] * 100, 0
-            )
-            grp["% > 5 min"] = np.where(
-                grp["Total"] > 0, grp["Adianta5"] / grp["Total"] * 100, 0
-            )
-            grp["% > 10 min"] = np.where(
-                grp["Total"] > 0, grp["Adianta10"] / grp["Total"] * 100, 0
-            )
+            resumo1["% >3 min"] = resumo1["Adianta3"] / resumo1["Total"] * 100
+            resumo1["% >5 min"] = resumo1["Adianta5"] / resumo1["Total"] * 100
+            resumo1["% >10 min"] = resumo1["Adianta10"] / resumo1["Total"] * 100
 
-            grp = grp.sort_values("% > 10 min", ascending=False)
+            resumo1 = resumo1.sort_values("% >10 min", ascending=False)
 
-            colunas_pct1 = ["% > 3 min", "% > 5 min", "% > 10 min"]
+            colunas_pct1 = ["% >3 min", "% >5 min", "% >10 min"]
+
             tabela_semáforo(
-                grp[["Empresa", "Total"] + colunas_pct1],
+                resumo1[["Empresa", "Total"] + colunas_pct1],
                 colunas_pct=colunas_pct1,
                 titulo="Empresas com maiores percentuais de viagens adiantadas",
             )
 
-            # ------------------- RANKING 2 — SITUAÇÃO DA VIAGEM -------------------
-            st.markdown("### Ranking 2 — Situação da Viagem")
+            # ------------------- RANKING 2 — SITUAÇÃO DA VIAGEM (TODAS, EXCETO CONCLUÍDA) -------------------
+            st.markdown("### Ranking 2 — Situação da Viagem (distribuição por empresa, exceto 'Viagem concluída')")
 
-            s = df_rank["Situação_viagem"].fillna("").str.lower()
+            df_sv = df_rank.copy()
+            df_sv["Situação_viagem"] = df_sv["Situação_viagem"].fillna("")
 
-            df_rank["Flg_Cancelada"] = s.str.contains("cancelad")
-            df_rank["Flg_NaoMonit"] = s.str.contains("não monitorada") | s.str.contains("nao monitorada")
-            df_rank["Flg_Cumprida"] = s.str.contains("concluída") | s.str.contains("concluida")
-            df_rank["Flg_ProbHorario"] = (
-                s.str.contains("tempo limite") | s.str.contains("horário") | s.str.contains("horario")
-            )
+            sv_norm = df_sv["Situação_viagem"].str.strip().str.lower()
+            mask_concl = sv_norm.isin(["viagem concluída", "viagem concluida"])
+            df_sv = df_sv[~mask_concl]
 
-            grp2 = df_rank.groupby("Empresa", as_index=False).agg(
-                Total=("Empresa", "size"),
-                Canceladas=("Flg_Cancelada", "sum"),
-                NaoMonit=("Flg_NaoMonit", "sum"),
-                Cumpridas=("Flg_Cumprida", "sum"),
-                ProbHorario=("Flg_ProbHorario", "sum"),
-            )
+            if df_sv.empty:
+                st.info("Não há dados de Situação da Viagem (exceto 'Viagem concluída') para esta janela.")
+            else:
+                total_emp_sv = df_sv.groupby("Empresa")["Situação_viagem"].size().rename("TotalEmp")
+                dist_sv = (
+                    df_sv.groupby(["Empresa", "Situação_viagem"])
+                    .size()
+                    .rename("Qtd")
+                    .reset_index()
+                )
 
-            grp2["% Canceladas"] = np.where(
-                grp2["Total"] > 0, grp2["Canceladas"] / grp2["Total"] * 100, 0
-            )
-            grp2["% Não Monit."] = np.where(
-                grp2["Total"] > 0, grp2["NaoMonit"] / grp2["Total"] * 100, 0
-            )
-            grp2["% Cumpridas"] = np.where(
-                grp2["Total"] > 0, grp2["Cumpridas"] / grp2["Total"] * 100, 0
-            )
-            grp2["% Prob. Horário"] = np.where(
-                grp2["Total"] > 0, grp2["ProbHorario"] / grp2["Total"] * 100, 0
-            )
+                dist_sv = dist_sv.merge(total_emp_sv, on="Empresa", how="left")
+                dist_sv["%"] = dist_sv["Qtd"] / dist_sv["TotalEmp"] * 100
 
-            grp2 = grp2.sort_values(
-                ["% Não Monit.", "% Canceladas"], ascending=False
-            )
+                tabela_sv_emp = dist_sv.pivot_table(
+                    index="Empresa",
+                    columns="Situação_viagem",
+                    values="%",
+                    fill_value=0,
+                ).reset_index()
 
-            colunas_pct2 = [
-                "% Canceladas",
-                "% Não Monit.",
-                "% Cumpridas",
-                "% Prob. Horário",
-            ]
-            tabela_semáforo(
-                grp2[["Empresa", "Total"] + colunas_pct2],
-                colunas_pct=colunas_pct2,
-                titulo="Empresas por situação da viagem (semáforo por percentual)",
-            )
+                colunas_pct2 = [c for c in tabela_sv_emp.columns if c != "Empresa"]
+
+                tabela_semáforo(
+                    tabela_sv_emp,
+                    colunas_pct=colunas_pct2,
+                    titulo="Distribuição de Situação da Viagem por Empresa (% dentro da empresa)",
+                )
 
             # ------------------- RANKING 3 — SITUAÇÃO CATEGORIA -------------------
             st.markdown("### Ranking 3 — Situação Categoria (distribuição por empresa)")
 
-            categorias = ["ACI", "AVL", "CII", "EXT", "IAC", "IEP",
-                          "MRI", "OK", "QUE", "SIS", "TRI", "VNR"]
+            categorias = ["ACI", "AVL", "CII", "EXT", "IAC", "IEP", "MRI", "OK", "QUE", "SIS", "TRI", "VNR"]
 
             df_cat = df_rank.copy()
             df_cat["Situação_categoria"] = df_cat["Situação_categoria"].fillna("")
 
-            total_emp = (
-                df_cat.groupby("Empresa")["Situação_categoria"]
-                .size()
-                .rename("TotalEmp")
-            )
+            total_emp = df_cat.groupby("Empresa")["Situação_categoria"].size().rename("TotalEmp")
             dist = (
                 df_cat.groupby(["Empresa", "Situação_categoria"])
                 .size()
@@ -521,9 +600,7 @@ with aba4:
             )
 
             dist = dist.merge(total_emp, on="Empresa", how="left")
-            dist["% Categoria"] = np.where(
-                dist["TotalEmp"] > 0, dist["Qtd"] / dist["TotalEmp"] * 100, 0
-            )
+            dist["% Categoria"] = dist["Qtd"] / dist["TotalEmp"] * 100
 
             tabela_cat_emp = dist.pivot_table(
                 index="Empresa",
@@ -532,6 +609,7 @@ with aba4:
                 fill_value=0,
             )
 
+            # garantir todas as categorias em colunas (mesmo que 0)
             for c in categorias:
                 if c not in tabela_cat_emp.columns:
                     tabela_cat_emp[c] = 0
@@ -543,43 +621,3 @@ with aba4:
                 colunas_pct=categorias,
                 titulo="Distribuição de Situação Categoria por Empresa (% dentro da empresa)",
             )
-
-            # ------------------- HEATMAP Empresa × Situação da Viagem -------------------
-            st.markdown("### Heatmap — Empresa × Situação da Viagem (últimos 7 dias)")
-
-            dist_sv = (
-                df_rank.groupby(["Empresa", "Situação_viagem"])
-                .size()
-                .rename("Qtd")
-                .reset_index()
-            )
-
-            tot_emp_sv = dist_sv.groupby("Empresa")["Qtd"].sum().rename("TotalEmp")
-            dist_sv = dist_sv.merge(tot_emp_sv, on="Empresa", how="left")
-            dist_sv["%"] = np.where(
-                dist_sv["TotalEmp"] > 0, dist_sv["Qtd"] / dist_sv["TotalEmp"] * 100, 0
-            )
-
-            heat = dist_sv.pivot_table(
-                index="Empresa",
-                columns="Situação_viagem",
-                values="%",
-                fill_value=0,
-            )
-
-            if not heat.empty:
-                fig_heat = px.imshow(
-                    heat,
-                    aspect="auto",
-                    color_continuous_scale="Reds",
-                    labels=dict(color="% das viagens"),
-                    height=500,
-                )
-                fig_heat.update_layout(
-                    title="Heatmap Empresa × Situação da Viagem (% dentro da empresa)",
-                    xaxis_title="Situação da Viagem",
-                    yaxis_title="Empresa",
-                )
-                st.plotly_chart(fig_heat, use_container_width=True)
-            else:
-                st.info("Não há dados suficientes para o heatmap.")
